@@ -30,12 +30,13 @@
             background: #E0001B;
             color: #fff;
         }
+        .leaflet-control-zoom { display: none !important; }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <script>
-        var map = L.map('map', { zoomControl: true }).setView([0, 0], 2);
+        var map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
             maxZoom: 19,
             attribution: '&copy; OpenStreetMap &copy; CARTO'

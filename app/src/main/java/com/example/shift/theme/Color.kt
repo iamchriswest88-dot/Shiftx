@@ -2,18 +2,46 @@ package com.example.shift.theme
 
 import androidx.compose.ui.graphics.Color
 
-val primary = Color(0xFF5CD5FA)
-val onPrimary = Color(0xFF003544)
-val primaryContainer = Color(0xFF004D62)
-val onPrimaryContainer = Color(0xFFB6EBFF)
-val secondaryContainer = Color(0xFF354A53)
-val onSecondaryContainer = Color(0xFFCFE6F1)
-val tertiary = Color(0xFFC2C3EB)
-val surface = Color(0xFF0F1417)
-val surfaceContainer = Color(0xFF1B2023)
-val surfaceContainerHigh = Color(0xFF252B2E)
-val surfaceContainerHighest = Color(0xFF303639)
-val onSurface = Color(0xFFDEE3E6)
-val onSurfaceVariant = Color(0xFFC0C8CC)
-val outline = Color(0xFF8A9296)
-val outlineVariant = Color(0xFF40484C)
+// Shift v4 Nothing-OS Design System Palette Tokens
+val ShiftBg = Color(0xFFEBEBE5)
+val ShiftCard = Color(0xFFF7F7F2)
+val ShiftCardInset = Color(0xFFEBEBE3)
+val ShiftCardSelected = Color(0xFFFFFFFF)
+val ShiftDarkSurface = Color(0xFF1B1B19)
+
+val ShiftTextOnDark = Color(0xFFF2F2ED)
+val ShiftTextPrimary = Color(0xFF1A1A18)
+val ShiftTextSecondary = Color(0xFF5A5A54)
+val ShiftTextMuted = Color(0xFF8A8A84)
+
+val ShiftHairline = Color(0xFFC9C9C0)
+val ShiftDivider = Color(0xFFD9D9D0)
+val ShiftDotBorder = Color(0xFFB9B9B0)
+
+val ShiftOrange = Color(0xFFF0521E) // Accent orange
+
+val FeelGoodColor = Color(0xFF7ED957)
+val FeelMidColor = Color(0xFFFFC64B)
+val FeelLowColor = Color(0xFFF0521E)
+
+val ChartCtlColor = Color(0xFF1A1A18)
+val ChartAtlColor = Color(0xFFF0521E)
+val ElevProfileFill = Color(0xFFE3E3DB)
+val ElevProfileStroke = Color(0xFF1A1A18)
+
+// Backward-compatible material color mappings
+val primary = ShiftOrange
+val onPrimary = Color(0xFFFFFFFF)
+val primaryContainer = ShiftOrange
+val onPrimaryContainer = Color(0xFFFFFFFF)
+val secondaryContainer = ShiftCardInset
+val onSecondaryContainer = ShiftTextPrimary
+val tertiary = FeelGoodColor
+val surface = ShiftBg
+val surfaceContainer = ShiftCard
+val surfaceContainerHigh = ShiftCardSelected
+val surfaceContainerHighest = ShiftCardInset
+val onSurface = ShiftTextPrimary
+val onSurfaceVariant = ShiftTextSecondary
+val outline = ShiftHairline
+val outlineVariant = ShiftDivider

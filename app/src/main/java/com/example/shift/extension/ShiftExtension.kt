@@ -1,18 +1,18 @@
 package com.example.shift.extension
 
+import android.util.Log
 import io.hammerhead.karooext.KarooSystemService
 import io.hammerhead.karooext.extension.KarooExtension
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import android.util.Log
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 class ShiftExtension : KarooExtension("shift-extension", "1.0") {
 
     private lateinit var karooSystem: KarooSystemService
     private lateinit var courseTracker: CourseTracker
-    private var serviceJob: Job? = null
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override val types by lazy {
         listOf(
@@ -26,19 +26,17 @@ class ShiftExtension : KarooExtension("shift-extension", "1.0") {
         karooSystem = KarooSystemService(applicationContext)
         courseTracker = CourseTracker(applicationContext, karooSystem)
 
-        serviceJob = CoroutineScope(Dispatchers.IO).launch {
-            karooSystem.connect { connected ->
-                if (connected) {
-                    Log.i("ShiftExtension", "Shift Extension connected to KarooSystem")
-                    courseTracker.startTracking(this)
-                }
-            }
+        // Consumers registered before the service connects are queued and
+        // registered on connection, so it's safe to start tracking immediately.
+        courseTracker.startTracking(serviceScope)
+
+        karooSystem.connect { connected ->
+            Log.i("ShiftExtension", "KarooSystem connected: $connected")
         }
     }
 
     override fun onDestroy() {
-        serviceJob?.cancel()
-        serviceJob = null
+        serviceScope.cancel()
         karooSystem.disconnect()
         super.onDestroy()
     }

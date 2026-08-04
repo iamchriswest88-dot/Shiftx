@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -150,14 +152,17 @@ fun MapScreen(
 
         BottomSheetScaffold(
             scaffoldState = scaffoldState,
-            sheetContainerColor = MaterialTheme.colorScheme.surface,
+            sheetContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
             sheetContentColor = MaterialTheme.colorScheme.onSurface,
+            sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
             sheetPeekHeight = if (isCreationMode) 320.dp else 240.dp,
+            sheetDragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)) },
             sheetContent = {
                 if (isCreationMode) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
                             .padding(horizontal = 20.dp, vertical = 8.dp)
                     ) {
                         Row(
@@ -224,6 +229,7 @@ fun MapScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
                             .padding(horizontal = 20.dp, vertical = 8.dp)
                             .navigationBarsPadding()
                     ) {
@@ -429,7 +435,7 @@ fun MapScreen(
                                     val timeLabel = if (isPr) {
                                         "$timeFormatted · PR"
                                     } else {
-                                        "$timeFormatted · +${(matchInfo.rank - 1) * 3}s"
+                                        timeFormatted
                                     }
                                     
                                     Row(
@@ -549,7 +555,8 @@ fun MapScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 24.dp, end = 24.dp, top = 24.dp)
+                            .statusBarsPadding()
+                            .padding(start = 24.dp, end = 24.dp, top = 36.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),

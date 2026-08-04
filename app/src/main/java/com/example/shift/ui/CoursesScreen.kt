@@ -5,6 +5,7 @@ import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.shift.data.Course
+import com.example.shift.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,22 +43,18 @@ fun CoursesScreen(
     val prMap by viewModel.prMap.collectAsState()
 
     var selectedCourseId by remember { mutableStateOf<String?>(null) }
-    // Keep a ref to the WebView so we can call JS on it reactively
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
 
-    // Auto-select first course
     LaunchedEffect(courses) {
         if (selectedCourseId == null && courses.isNotEmpty()) {
             selectedCourseId = courses.first().id
         }
     }
 
-    // Whenever selected course changes, update the map
     LaunchedEffect(selectedCourseId, courses) {
         val wv = webViewRef.value ?: return@LaunchedEffect
         val course = courses.find { it.id == selectedCourseId } ?: return@LaunchedEffect
         wv.post {
-            // Clear previous and draw the selected route in cyan/blue
             wv.evaluateJavascript("routeLayer.clearLayers(); courseLayer.clearLayers();", null)
             if (course.encodedPolyline != null) {
                 val escaped = course.encodedPolyline
@@ -72,142 +70,119 @@ fun CoursesScreen(
         }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Segments",
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                actions = {
-                    IconButton(
-                        onClick = onCreateCourse,
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .background(MaterialTheme.colorScheme.primary, CircleShape)
-                            .size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "New Segment",
-                            tint = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            )
-        },
-        modifier = Modifier.fillMaxSize()
-    ) { innerPadding ->
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ShiftBg)
+    ) {
+        // Header
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // ── MAP at the TOP ──────────────────────────────────────────
-            Card(
+            Text(
+                text = "Segments",
+                style = ScreenTitleStyle
+            )
+            // Orange circular add button
+            IconButton(
+                onClick = onCreateCourse,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(260.dp)
-                    .padding(horizontal = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                shape = RoundedCornerShape(20.dp)
+                    .size(40.dp)
+                    .background(ShiftOrange, CircleShape)
             ) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    AndroidView(
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                layoutParams = android.view.ViewGroup.LayoutParams(
-                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                                )
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                webViewClient = object : WebViewClient() {
-                                    override fun onPageFinished(view: WebView?, url: String?) {
-                                        val course = courses.find { it.id == selectedCourseId }
-                                            ?: courses.firstOrNull()
-                                            ?: return
-                                        if (course.encodedPolyline != null) {
-                                            val escaped = course.encodedPolyline
-                                                .replace("\\", "\\\\")
-                                                .replace("'", "\\'")
-                                            view?.evaluateJavascript("drawCourseRoute('$escaped');", null)
-                                        } else {
-                                            view?.evaluateJavascript(
-                                                "updateMarkers(${course.startLat}, ${course.startLng}, ${course.endLat}, ${course.endLng});",
-                                                null
-                                            )
-                                        }
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "New Segment",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        // Map preview card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+                .padding(horizontal = 20.dp),
+            colors = CardDefaults.cardColors(containerColor = ShiftCard),
+            shape = RoundedCornerShape(26.dp)
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            layoutParams = android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            webViewClient = object : WebViewClient() {
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    val course = courses.find { it.id == selectedCourseId }
+                                        ?: courses.firstOrNull()
+                                        ?: return
+                                    if (course.encodedPolyline != null) {
+                                        val escaped = course.encodedPolyline
+                                            .replace("\\", "\\\\")
+                                            .replace("'", "\\'")
+                                        view?.evaluateJavascript("drawCourseRoute('$escaped');", null)
+                                    } else {
+                                        view?.evaluateJavascript(
+                                            "updateMarkers(${course.startLat}, ${course.startLng}, ${course.endLat}, ${course.endLng});",
+                                            null
+                                        )
                                     }
                                 }
-                                loadUrl("file:///android_asset/leaflet_map.html")
-                                webViewRef.value = this
                             }
-                        },
-                        update = { wv ->
-                            webViewRef.value = wv
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    // Small label badge in corner
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(10.dp)
-                            .background(Color(0xCC0A0A0A), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "map preview – leaflet",
-                            color = Color.White.copy(alpha = 0.6f),
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                            ),
-                            fontSize = 10.sp
-                        )
-                    }
-                }
+                            loadUrl("file:///android_asset/leaflet_map.html")
+                            webViewRef.value = this
+                        }
+                    },
+                    update = { wv ->
+                        webViewRef.value = wv
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
             }
+        }
 
-            Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-            // ── SEGMENTS LIST below ─────────────────────────────────────
-            if (courses.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "No saved segments. Tap the + icon to create one.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)
-                ) {
-                    items(courses, key = { it.id }) { course ->
-                        CourseItem(
-                            course = course,
-                            prTime = prMap[course.id] ?: "--",
-                            isSelected = selectedCourseId == course.id,
-                            onDelete = { viewModel.deleteCourse(course.id) },
-                            onClick = {
-                                if (selectedCourseId == course.id) {
-                                    // Second tap → navigate into detail
-                                    onCourseClick(course.id)
-                                } else {
-                                    // First tap → select and show on map
-                                    selectedCourseId = course.id
-                                }
+        // Segments list
+        if (courses.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    text = "No saved segments. Tap the + icon to create one.",
+                    color = ShiftTextMuted,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 110.dp)
+            ) {
+                items(courses, key = { it.id }) { course ->
+                    CourseItem(
+                        course = course,
+                        prTime = prMap[course.id] ?: "--",
+                        isSelected = selectedCourseId == course.id,
+                        onDelete = { viewModel.deleteCourse(course.id) },
+                        onClick = {
+                            if (selectedCourseId == course.id) {
+                                onCourseClick(course.id)
+                            } else {
+                                selectedCourseId = course.id
                             }
-                        )
-                    }
+                        }
+                    )
                 }
             }
         }
@@ -231,14 +206,11 @@ fun CourseItem(
             .fillMaxWidth()
             .clickable(onClick = { if (!isDeleting) onClick() }),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected)
-                MaterialTheme.colorScheme.surfaceContainerHigh
-            else
-                MaterialTheme.colorScheme.surfaceContainer
+            containerColor = if (isSelected) ShiftCardSelected else ShiftCard
         ),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(22.dp),
         border = if (isSelected) androidx.compose.foundation.BorderStroke(
-            1.5.dp, Color(0xFF5CD5FA)
+            1.5.dp, ShiftOrange
         ) else null
     ) {
         Row(
@@ -247,17 +219,17 @@ fun CourseItem(
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left: cyan-tinted circle icon
+            // Icon circle
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .background(Color(0xFF004D62), shape = CircleShape),
+                    .background(ShiftCardInset, shape = CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Map,
                     contentDescription = null,
-                    tint = Color(0xFF5CD5FA),
+                    tint = ShiftTextPrimary,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -267,16 +239,16 @@ fun CourseItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = course.name,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    style = CardTitleStyle,
+                    color = ShiftTextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = subtitle.uppercase(),
+                    style = MicroLabelStyle,
+                    color = ShiftTextMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -295,14 +267,14 @@ fun CourseItem(
                                 isDeleting = false
                                 onDelete()
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
                             shape = RoundedCornerShape(percent = 50),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             Text(
                                 "Delete",
-                                color = MaterialTheme.colorScheme.onError,
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                             )
                         }
                         IconButton(
@@ -310,12 +282,12 @@ fun CourseItem(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .background(ShiftCardInset)
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = "Cancel",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = ShiftTextMuted,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -325,24 +297,16 @@ fun CourseItem(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // PR Badge — cyan/blue tones
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            modifier = Modifier
-                                .background(Color(0xFF202D33), shape = RoundedCornerShape(8.dp))
-                                .padding(horizontal = 9.dp, vertical = 5.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.EmojiEvents,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(13.dp)
+                        // PR Badge — orange NDot with mono "PR" caption
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = prTime,
+                                style = StatNumeralSmall,
+                                color = ShiftOrange
                             )
                             Text(
-                                text = "PR $prTime",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White
+                                text = "PR",
+                                style = MicroLabelStyle.copy(fontSize = 8.sp, color = ShiftTextMuted)
                             )
                         }
 
@@ -353,7 +317,7 @@ fun CourseItem(
                             Icon(
                                 imageVector = Icons.Outlined.Delete,
                                 contentDescription = "Delete",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = ShiftTextMuted,
                                 modifier = Modifier.size(18.dp)
                             )
                         }

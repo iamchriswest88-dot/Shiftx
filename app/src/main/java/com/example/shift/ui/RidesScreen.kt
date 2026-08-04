@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,14 +22,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.shift.data.Activity
+import com.example.shift.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -55,109 +59,114 @@ fun RidesScreen(
         }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            TopAppBar(
-                title = { 
-                    Text(
-                        text = "Activity", 
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-                    ) 
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.fetchActivities() }) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ShiftBg)
+    ) {
+        // Header row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Activity",
+                style = ScreenTitleStyle
             )
+            // Circular refresh button
+            IconButton(
+                onClick = { viewModel.fetchActivities() },
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(ShiftCardInset, CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Refresh",
+                    tint = ShiftTextSecondary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
-    ) { pad ->
-        Box(modifier = Modifier.fillMaxSize().padding(pad)) {
-            if (isLoading && activities.isEmpty()) {
-                com.example.shift.ui.components.FullScreenLoading()
-            } else if (activities.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No activities found.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                // Group activities by Month Year (e.g., "OCTOBER 2024")
-                val groupedActivities = remember(activities) {
-                    activities.groupBy { activity ->
+
+        if (isLoading && activities.isEmpty()) {
+            com.example.shift.ui.components.FullScreenLoading()
+        } else if (activities.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "No activities found.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = ShiftTextMuted
+                )
+            }
+        } else {
+            val groupedActivities = remember(activities) {
+                activities.groupBy { activity ->
+                    try {
+                        val parsed = java.time.ZonedDateTime.parse(activity.start_date_local)
+                        parsed.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+                    } catch (e: Exception) {
                         try {
-                            val parsed = java.time.ZonedDateTime.parse(activity.start_date_local)
+                            val parsed = java.time.LocalDateTime.parse(activity.start_date_local)
                             parsed.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
-                        } catch (e: Exception) {
+                        } catch (e2: Exception) {
                             try {
-                                val parsed = java.time.LocalDateTime.parse(activity.start_date_local)
+                                val parsed = LocalDate.parse(activity.start_date_local.take(10))
                                 parsed.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
-                            } catch (e2: Exception) {
-                                try {
-                                    val parsed = LocalDate.parse(activity.start_date_local.take(10))
-                                    parsed.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
-                                } catch (e3: Exception) {
-                                    "Unknown"
-                                }
+                            } catch (e3: Exception) {
+                                "Unknown"
                             }
                         }
                     }
                 }
+            }
 
-                // Calculate monthly totals
-                val monthlySummaries = remember(activities) {
-                    groupedActivities.mapValues { (_, monthActs) ->
-                        val totalMiles = monthActs.sumOf { (it.distance ?: 0.0) * 0.000621371 }
-                        val totalElevFeet = monthActs.sumOf { (it.total_elevation_gain ?: 0.0) * 3.28084 }
-                        val totalSecs = monthActs.sumOf { (it.moving_time ?: 0).toLong() }
-                        val hours = totalSecs / 3600
-                        val mins = (totalSecs % 3600) / 60
-                        val durationStr = if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
-                        Triple(totalMiles, totalElevFeet, durationStr)
-                    }
+            val monthlySummaries = remember(activities) {
+                groupedActivities.mapValues { (_, monthActs) ->
+                    val totalMiles = monthActs.sumOf { (it.distance ?: 0.0) * 0.000621371 }
+                    val totalElevFeet = monthActs.sumOf { (it.total_elevation_gain ?: 0.0) * 3.28084 }
+                    val totalSecs = monthActs.sumOf { (it.moving_time ?: 0).toLong() }
+                    val hours = totalSecs / 3600
+                    val mins = (totalSecs % 3600) / 60
+                    val durationStr = if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
+                    Triple(totalMiles, totalElevFeet, durationStr)
                 }
+            }
 
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp)
-                ) {
-                    groupedActivities.forEach { (monthYear, monthActs) ->
-                        val summary = monthlySummaries[monthYear]
-                        if (summary != null) {
-                            item(key = "summary_$monthYear") {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                MonthlySummaryCard(
-                                    monthYear = monthYear.uppercase(),
-                                    totalMiles = summary.first,
-                                    totalElevationFeet = summary.second,
-                                    movingDurationStr = summary.third
-                                )
-                            }
-                        }
-
-                        // Activities for this month
-                        items(monthActs, key = { it.id }) { activity ->
-                            val count = segmentCounts[activity.id.toString()] ?: 0
-                            ActivityItem(
-                                activity = activity,
-                                segmentCount = count,
-                                onClick = { 
-                                    onActivityClick(activity)
-                                }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp)
+            ) {
+                groupedActivities.forEach { (monthYear, monthActs) ->
+                    val summary = monthlySummaries[monthYear]
+                    if (summary != null) {
+                        item(key = "summary_$monthYear") {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            MonthlySummaryCard(
+                                monthYear = monthYear.uppercase(),
+                                totalMiles = summary.first,
+                                totalElevationFeet = summary.second,
+                                movingDurationStr = summary.third
                             )
                         }
+                    }
+
+                    items(monthActs, key = { it.id }) { activity ->
+                        val count = segmentCounts[activity.id.toString()] ?: 0
+                        ActivityItem(
+                            activity = activity,
+                            segmentCount = count,
+                            onClick = { 
+                                onActivityClick(activity)
+                            }
+                        )
                     }
                 }
             }
@@ -172,14 +181,10 @@ fun MonthlySummaryCard(
     totalElevationFeet: Double,
     movingDurationStr: String
 ) {
-    val bgColor    = Color(0xFF5CD5FA)   // cyan-blue
-    val darkText   = Color(0xFF0D1B1E)   // near-black
-    val mutedText  = Color(0xFF1E3A42)   // dark grey-blue
-
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = bgColor)
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = ShiftDarkSurface)
     ) {
         Column(
             modifier = Modifier
@@ -188,13 +193,12 @@ fun MonthlySummaryCard(
         ) {
             Text(
                 text = monthYear,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 1.2.sp
-                ),
-                color = darkText
+                style = MicroLabelStyle.copy(
+                    letterSpacing = 2.sp,
+                    color = ShiftTextMuted
+                )
             )
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -203,13 +207,12 @@ fun MonthlySummaryCard(
                 Column {
                     Text(
                         text = "%.1f".format(totalMiles),
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                        color = darkText
+                        style = StatNumeralHero,
+                        color = ShiftTextOnDark
                     )
                     Text(
-                        text = "miles",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = mutedText
+                        text = "MILES",
+                        style = MicroLabelStyle.copy(color = ShiftTextMuted)
                     )
                 }
 
@@ -217,27 +220,25 @@ fun MonthlySummaryCard(
                 Column {
                     Text(
                         text = "%,.0f".format(totalElevationFeet),
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                        color = darkText
+                        style = StatNumeralHero,
+                        color = ShiftTextOnDark
                     )
                     Text(
-                        text = "elevation ft",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = mutedText
+                        text = "ELEV FT",
+                        style = MicroLabelStyle.copy(color = ShiftTextMuted)
                     )
                 }
 
-                // Time
+                // Time — in orange
                 Column {
                     Text(
                         text = movingDurationStr,
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                        color = darkText
+                        style = StatNumeralHero,
+                        color = ShiftOrange
                     )
                     Text(
-                        text = "moving time",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = mutedText
+                        text = "MOVING",
+                        style = MicroLabelStyle.copy(color = ShiftTextMuted)
                     )
                 }
             }
@@ -292,23 +293,26 @@ fun ActivityItem(
         }
     }
 
-    val (icon, bgContainer, onContainer) = when {
-        isFlow -> Triple(Icons.Default.Spa, Color(0xFF81C784).copy(alpha = 0.2f), Color(0xFF81C784))
-        isGym  -> Triple(Icons.Default.FitnessCenter, Color(0xFFCE93D8).copy(alpha = 0.2f), Color(0xFFCE93D8))
-        isRun  -> Triple(Icons.Default.DirectionsRun, Color(0xFFFFD54F).copy(alpha = 0.2f), Color(0xFFFFD54F))
-        else   -> Triple(Icons.AutoMirrored.Filled.DirectionsBike, Color(0xFF5CD5FA).copy(alpha = 0.2f), Color(0xFF5CD5FA))
+    // Icon circle: rides = orange circle + white bike icon; others = greige circle + dark icon
+    val isRide = !isFlow && !isGym && !isRun
+    val (icon, bgCircle, iconTint) = when {
+        isRide -> Triple(Icons.AutoMirrored.Filled.DirectionsBike, ShiftOrange, Color.White)
+        isFlow -> Triple(Icons.Default.Spa, ShiftCardInset, ShiftTextPrimary)
+        isGym  -> Triple(Icons.Default.FitnessCenter, ShiftCardInset, ShiftTextPrimary)
+        isRun  -> Triple(Icons.Default.DirectionsRun, ShiftCardInset, ShiftTextPrimary)
+        else   -> Triple(Icons.AutoMirrored.Filled.DirectionsBike, ShiftOrange, Color.White)
     }
     
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        shape = RoundedCornerShape(16.dp)
+        colors = CardDefaults.cardColors(containerColor = ShiftCard),
+        shape = RoundedCornerShape(22.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -318,14 +322,14 @@ fun ActivityItem(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
-                        .background(bgContainer, shape = CircleShape),
+                        .size(42.dp)
+                        .background(bgCircle, shape = CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = onContainer,
+                        tint = iconTint,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -333,39 +337,47 @@ fun ActivityItem(
                 Column {
                     Text(
                         text = activity.name,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        style = CardTitleStyle,
+                        color = ShiftTextPrimary,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = subtitle.uppercase(),
+                        style = MicroLabelStyle,
+                        color = ShiftTextMuted
                     )
                 }
             }
             if (segmentCount > 0) {
                 Spacer(modifier = Modifier.width(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                // Dotted-outline pill badge
+                Box(
+                    modifier = Modifier
+                        .border(
+                            width = 1.dp,
+                            color = ShiftDotBorder,
+                            shape = RoundedCornerShape(999.dp)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Layers,
                             contentDescription = "Matched Routes",
-                            modifier = Modifier.size(14.dp)
+                            tint = ShiftTextMuted,
+                            modifier = Modifier.size(13.dp)
                         )
                         Text(
                             text = "$segmentCount",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                            style = MicroLabelStyle.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = ShiftTextSecondary
+                            )
                         )
                     }
                 }

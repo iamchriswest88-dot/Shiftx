@@ -3,6 +3,7 @@ package com.example.shift.ui
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -33,7 +34,8 @@ import androidx.lifecycle.LifecycleEventObserver
 fun CourseDetailScreen(
     viewModel: CourseDetailViewModel,
     onBack: () -> Unit,
-    onEditCourse: (String, String) -> Unit
+    onEditCourse: (String, String) -> Unit,
+    onMatchClick: (String) -> Unit
 ) {
     val course by viewModel.course.collectAsState()
     val matches by viewModel.filteredMatches.collectAsState()
@@ -195,7 +197,9 @@ fun CourseDetailScreen(
                 ) {
                     itemsIndexed(matches) { index, match ->
                         ElevatedCard(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onMatchClick(match.activityId) },
                             colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                             shape = RoundedCornerShape(12.dp)
                         ) {

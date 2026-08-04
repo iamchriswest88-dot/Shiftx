@@ -99,6 +99,7 @@ object SegmentScanner {
     fun detectGates(course: Course, activity: Activity, stream: ParsedStream): List<CourseMatch> {
         val latlngs = stream.latlng ?: return emptyList()
         val times = stream.time ?: return emptyList()
+        if (latlngs.isEmpty() || times.isEmpty()) return emptyList()
         
         val startIndices = mutableListOf<Int>()
         val endIndices = mutableListOf<Int>()
@@ -106,10 +107,13 @@ object SegmentScanner {
         var inStartZone = false
         var inEndZone = false
         
+        // Tightened gate proximity radius to 50 meters (down from 200m)
+        val GATE_RADIUS_M = 50.0
+
         for (i in latlngs.indices) {
             val pt = latlngs[i]
             val distStart = haversineDistance(course.startLat, course.startLng, pt[0], pt[1])
-            if (distStart < 200.0) {
+            if (distStart < GATE_RADIUS_M) {
                 if (!inStartZone) {
                     startIndices.add(i)
                     inStartZone = true
@@ -119,7 +123,7 @@ object SegmentScanner {
             }
             
             val distEnd = haversineDistance(course.endLat, course.endLng, pt[0], pt[1])
-            if (distEnd < 200.0) {
+            if (distEnd < GATE_RADIUS_M) {
                 if (!inEndZone) {
                     endIndices.add(i)
                     inEndZone = true
@@ -129,7 +133,21 @@ object SegmentScanner {
             }
         }
 
-        val decodedPolyline = course.encodedPolyline?.let { PolylineUtils.decodePolyline(it) }
+        val decodedPolyline = course.encodedPolyline?.let { PolylineUtils.decodePolyline(it) } ?: return emptyList()
+        if (decodedPolyline.size < 2) return emptyList()
+
+        // Precompute initial & final bearings for the segment polyline
+        val courseStartBearing = calculateBearing(
+            decodedPolyline.first().first, decodedPolyline.first().second,
+            decodedPolyline[kotlin.math.min(3, decodedPolyline.size - 1)].first,
+            decodedPolyline[kotlin.math.min(3, decodedPolyline.size - 1)].second
+        )
+        val courseFinishBearing = calculateBearing(
+            decodedPolyline[kotlin.math.max(0, decodedPolyline.size - 4)].first,
+            decodedPolyline[kotlin.math.max(0, decodedPolyline.size - 4)].second,
+            decodedPolyline.last().first, decodedPolyline.last().second
+        )
+
         val matches = mutableListOf<CourseMatch>()
         var lastEndIndex = -1
 
@@ -139,19 +157,37 @@ object SegmentScanner {
             // Find the first end gate after this start gate
             val e = endIndices.firstOrNull { it > s }
             if (e != null) {
-                // We have a lap from s to e
-                
-                // Optional: Check deviation if needed
-                var maxDeviation = 0.0
-                if (decodedPolyline != null) {
-                    for (i in s..e) {
-                        val pt = latlngs[i]
-                        val dev = PolylineUtils.distanceToPolyline(decodedPolyline, pt[0], pt[1])
-                        if (dev > maxDeviation) maxDeviation = dev
-                    }
+                // 1. Directional Heading Verification (within ±60 degrees)
+                val trackStartPt1 = latlngs[kotlin.math.max(0, s - 2)]
+                val trackStartPt2 = latlngs[kotlin.math.min(latlngs.size - 1, s + 3)]
+                val riderStartBearing = calculateBearing(trackStartPt1[0], trackStartPt1[1], trackStartPt2[0], trackStartPt2[1])
+                val startAngleDiff = angleDifferenceDegrees(riderStartBearing, courseStartBearing)
+
+                val trackFinishPt1 = latlngs[kotlin.math.max(0, e - 3)]
+                val trackFinishPt2 = latlngs[kotlin.math.min(latlngs.size - 1, e + 2)]
+                val riderFinishBearing = calculateBearing(trackFinishPt1[0], trackFinishPt1[1], trackFinishPt2[0], trackFinishPt2[1])
+                val finishAngleDiff = angleDifferenceDegrees(riderFinishBearing, courseFinishBearing)
+
+                if (startAngleDiff > 60.0 || finishAngleDiff > 60.0) {
+                    android.util.Log.d("SegmentScanner", "Rejected attempt: Heading mismatch at gates (startDiff=${startAngleDiff.toInt()}°, finishDiff=${finishAngleDiff.toInt()}°)")
+                    continue
+                }
+
+                // 2. Strict Dual 90% Route Coverage & Track Integrity Verification
+                val isValidCoverage = validateSegmentCoverage(
+                    latlngs = latlngs,
+                    s = s,
+                    e = e,
+                    polyPoints = decodedPolyline,
+                    minRatio = 0.90,
+                    corridorDistM = 40.0
+                )
+
+                if (!isValidCoverage) {
+                    android.util.Log.d("SegmentScanner", "Rejected attempt: Failed 90% route overlap or track integrity check")
+                    continue
                 }
                 
-                // We currently accept matches regardless of deviation, but it's calculated above.
                 val timeTaken = times[e] - times[s]
                 if (timeTaken > 0) {
                     var avgWatts: Int? = null
@@ -194,6 +230,62 @@ object SegmentScanner {
         }
 
         return matches
+    }
+
+    /**
+     * Validates that:
+     * 1. Course Coverage: At least [minRatio] (90%) of the segment polyline points are matched by track points.
+     * 2. Track Integrity: At least [minRatio] (90%) of recorded track points between [s] and [e] are within [corridorDistM] of the segment.
+     */
+    private fun validateSegmentCoverage(
+        latlngs: List<List<Double>>,
+        s: Int,
+        e: Int,
+        polyPoints: List<Pair<Double, Double>>,
+        minRatio: Double = 0.90,
+        corridorDistM: Double = 40.0
+    ): Boolean {
+        val trackSegment = latlngs.subList(s, e + 1)
+        if (trackSegment.isEmpty() || polyPoints.isEmpty()) return false
+
+        // 1. Course Coverage
+        var matchedPolyCount = 0
+        for (polyPt in polyPoints) {
+            val hasNearTrackPt = trackSegment.any { trackPt ->
+                haversineDistance(polyPt.first, polyPt.second, trackPt[0], trackPt[1]) <= corridorDistM
+            }
+            if (hasNearTrackPt) matchedPolyCount++
+        }
+        val courseCoverage = matchedPolyCount.toDouble() / polyPoints.size
+
+        // 2. Track Integrity
+        var inCorridorTrackCount = 0
+        for (trackPt in trackSegment) {
+            val distToPoly = PolylineUtils.distanceToPolyline(polyPoints, trackPt[0], trackPt[1])
+            if (distToPoly <= corridorDistM) {
+                inCorridorTrackCount++
+            }
+        }
+        val trackIntegrity = inCorridorTrackCount.toDouble() / trackSegment.size
+
+        android.util.Log.d("SegmentScanner", "Coverage evaluation: courseCoverage=${(courseCoverage*100).toInt()}%, trackIntegrity=${(trackIntegrity*100).toInt()}%")
+
+        return courseCoverage >= minRatio && trackIntegrity >= minRatio
+    }
+
+    private fun calculateBearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val phi1 = Math.toRadians(lat1)
+        val phi2 = Math.toRadians(lat2)
+        val deltaLambda = Math.toRadians(lon2 - lon1)
+        val y = sin(deltaLambda) * cos(phi2)
+        val x = cos(phi1) * sin(phi2) - sin(phi1) * cos(phi2) * cos(deltaLambda)
+        val bearing = Math.toDegrees(atan2(y, x))
+        return (bearing + 360.0) % 360.0
+    }
+
+    private fun angleDifferenceDegrees(b1: Double, b2: Double): Double {
+        val diff = (b1 - b2 + 180.0) % 360.0 - 180.0
+        return kotlin.math.abs(if (diff < -180.0) diff + 360.0 else diff)
     }
 
     private fun haversineDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

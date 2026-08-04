@@ -3,9 +3,9 @@ package com.example.shift
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.DirectionsBike
@@ -33,6 +33,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.runtime.Composable
+import com.example.shift.theme.ShiftBg
+import com.example.shift.theme.ShiftOrange
+import com.example.shift.theme.ShiftTextSecondary
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -58,8 +70,10 @@ import com.example.shift.ui.gym.GymHistoryViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.parseColor("#0F1417")
-        window.navigationBarColor = android.graphics.Color.parseColor("#0F1417")
+        enableEdgeToEdge()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
         
         val settingsManager = SettingsManager(applicationContext)
         val courseManager = CourseManager(applicationContext)
@@ -122,53 +136,15 @@ class MainActivity : ComponentActivity() {
                         )
                         val coroutineScope = rememberCoroutineScope()
 
-                        Scaffold(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            bottomBar = {
-                                NavigationBar(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSurface,
-                                    tonalElevation = 8.dp
-                                ) {
-                                    tabs.forEachIndexed { index, title ->
-                                        val isSelected = pagerState.currentPage == index
-                                        NavigationBarItem(
-                                            selected = isSelected,
-                                            onClick = {
-                                                coroutineScope.launch {
-                                                    pagerState.animateScrollToPage(index)
-                                                }
-                                            },
-                                            icon = {
-                                                Icon(
-                                                    imageVector = if (isSelected) tabIconsSelected[index] else tabIconsUnselected[index],
-                                                    contentDescription = title
-                                                )
-                                            },
-                                            label = {
-                                                Text(
-                                                    text = title,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                                )
-                                            },
-                                            colors = NavigationBarItemDefaults.colors(
-                                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                        ) { paddingValues ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(ShiftBg)
+                                .statusBarsPadding()
+                        ) {
                             HorizontalPager(
                                 state = pagerState,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(paddingValues),
+                                modifier = Modifier.fillMaxSize(),
                                 userScrollEnabled = true
                             ) { page ->
                                 if (isKaroo) {
@@ -233,6 +209,21 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
+
+                            // Floating Blur Pill Navigation Overlay
+                            FloatingBottomNav(
+                                tabs = tabs,
+                                tabIcons = tabIconsSelected,
+                                selectedIndex = pagerState.currentPage,
+                                onTabSelected = { index ->
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(index)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 20.dp)
+                            )
                         }
                     }
                     composable(
@@ -281,7 +272,14 @@ class MainActivity : ComponentActivity() {
                         CourseDetailScreen(
                             viewModel = detailViewModel,
                             onBack = { navController.popBackStack() },
-                            onEditCourse = { cId, aId -> navController.navigate("edit_course/$cId/$aId") }
+                            onEditCourse = { cId, aId -> navController.navigate("edit_course/$cId/$aId") },
+                            onMatchClick = { activityId ->
+                                if (activityId.startsWith("hc_")) {
+                                    navController.navigate("run_stats/$activityId")
+                                } else {
+                                    navController.navigate("map/$activityId")
+                                }
+                            }
                         )
                     }
                     composable(
@@ -358,6 +356,54 @@ class MainActivity : ComponentActivity() {
                             isCreationMode = true
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FloatingBottomNav(
+    tabs: List<String>,
+    tabIcons: List<ImageVector>,
+    selectedIndex: Int,
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .shadow(
+                elevation = 16.dp,
+                shape = RoundedCornerShape(999.dp),
+                spotColor = Color.Black.copy(alpha = 0.16f)
+            )
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color.White.copy(alpha = 0.88f))
+            .border(1.dp, Color(0xCCFFFFFF), RoundedCornerShape(999.dp))
+            .padding(6.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            tabs.forEachIndexed { index, title ->
+                val isSelected = selectedIndex == index
+                val icon = tabIcons[index]
+
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelected) ShiftOrange else Color.Transparent)
+                        .clickable { onTabSelected(index) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = title,
+                        tint = if (isSelected) Color.White else ShiftTextSecondary,
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
             }
         }

@@ -8,14 +8,12 @@ import com.example.shift.data.CourseMatch
 import com.example.shift.data.MatchCacheManager
 import com.example.shift.utils.PolylineUtils
 import io.hammerhead.karooext.KarooSystemService
-import io.hammerhead.karooext.models.DataType
-import io.hammerhead.karooext.models.StreamState
+import io.hammerhead.karooext.models.OnLocationChanged
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -38,7 +36,7 @@ class CourseTracker(
         /** Radius in meters to detect reaching the end zone */
         private const val END_RADIUS_M = 40.0
         /** If rider strays further than this from the polyline, abandon tracking */
-        private const val OFF_COURSE_M = 150.0
+        private const val OFF_COURSE_M = 40.0
     }
 
     private val courseManager = CourseManager(context)
@@ -55,7 +53,13 @@ class CourseTracker(
     private var decodedPolyline: List<Pair<Double, Double>> = emptyList()
     private var totalPolylineDist: Double = 0.0
 
+    private var started = false
+
     fun startTracking(scope: CoroutineScope) {
+        // Guard against duplicate collectors if connect() fires more than once (reconnects)
+        if (started) return
+        started = true
+
         // Continuously collect courses so edits in the app are picked up live
         scope.launch(Dispatchers.IO) {
             courseManager.coursesFlow.collect { latestCourses ->
@@ -66,17 +70,14 @@ class CourseTracker(
             }
         }
 
-        // Stream location updates from the Karoo
+        // Consume location updates from the Karoo System.
+        // OnLocationChanged (karoo-ext >= 1.1.3) is the supported way to observe
+        // position; streaming DataType.Type.LOCATION is unreliable outside an
+        // active recording and is not what the official sample uses.
         scope.launch(Dispatchers.IO) {
-            karooSystem.streamDataFlow(DataType.Type.LOCATION)
-                .mapNotNull { state ->
-                    (state as? StreamState.Streaming)?.dataPoint?.values
-                }
-                .collect { locationValues ->
-                    val lat = locationValues[DataType.Field.LOC_LATITUDE] ?: return@collect
-                    val lng = locationValues[DataType.Field.LOC_LONGITUDE] ?: return@collect
-                    processLocationUpdate(lat, lng)
-                }
+            karooSystem.consumerFlow<OnLocationChanged>().collect { loc ->
+                processLocationUpdate(loc.lat, loc.lng)
+            }
         }
     }
 
