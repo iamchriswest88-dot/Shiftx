@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="stylesheet" href="leaflet.css" />
+    <script src="leaflet.js"></script>
+    <style>
+        body { padding: 0; margin: 0; background: #121212; }
+        html, body, #map { height: 100%; width: 100vw; background: #121212; }
+        .leaflet-container { background: #121212 !important; }
+        .marker-start {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 14px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #0A0A0A;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            border: 2px solid rgba(255,255,255,0.9);
+            background: #86D17A;
+        }
+        .marker-waypoint {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255, 199, 0, 0.6);
+            border: 2px solid rgba(255, 199, 0, 0.9);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script>
+        var map = L.map('map', { zoomControl: false }).setView([53.8, -1.5], 10);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OSM &copy; CARTO'
+        }).addTo(map);
+        
+        map.locate({setView: true, maxZoom: 14});
+
+        var startMarker = null;
+
+        map.on('locationfound', function(e) {
+            if (!startMarker) {
+                setStartMarker(e.latlng.lat, e.latlng.lng);
+                if (window.Android) {
+                    window.Android.onStartLocationSet(e.latlng.lat, e.latlng.lng);
+                }
+            }
+        });
+        var routeLayer = L.layerGroup().addTo(map);
+        var spurLayer = L.layerGroup().addTo(map);
+        var waypointLayer = L.layerGroup().addTo(map);
+
+        var startIcon = L.divIcon({
+            className: '',
+            html: '<div class="marker-start">S</div>',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
+        });
+
+        var waypointIcon = L.divIcon({
+            className: '',
+            html: '<div class="marker-waypoint"></div>',
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
+        });
+
+        map.on('click', function(e) {
+            setStartMarker(e.latlng.lat, e.latlng.lng);
+            if (window.Android) {
+                window.Android.onStartLocationSet(e.latlng.lat, e.latlng.lng);
+            }
+        });
+
+        function setStartMarker(lat, lng) {
+            if (startMarker) map.removeLayer(startMarker);
+            startMarker = L.marker([lat, lng], {icon: startIcon, draggable: true}).addTo(map);
+            startMarker.on('dragend', function(event) {
+                var position = event.target.getLatLng();
+                if (window.Android) {
+                    window.Android.onStartLocationSet(position.lat, position.lng);
+                }
+            });
+            map.setView([lat, lng], 13);
+        }
+
+        function displayRoute(coordsJson) {
+            routeLayer.clearLayers();
+            spurLayer.clearLayers();
+            try {
+                var coords = JSON.parse(coordsJson);
+                if (coords.length === 0) return;
+
+                var latlngs = coords.map(function(c) { return [c[0], c[1]]; });
+                var polyline = L.polyline(latlngs, {
+                    color: '#ffc700',
+                    weight: 4,
+                    opacity: 0.9,
+                    smoothFactor: 1
+                });
+                routeLayer.addLayer(polyline);
+
+                var bounds = polyline.getBounds();
+                if (startMarker) bounds.extend(startMarker.getLatLng());
+                map.fitBounds(bounds, {padding: [40, 40]});
+            } catch(e) {
+                console.error('displayRoute error:', e);
+            }
+        }
+
+        function highlightSpur(coordsJson) {
+            spurLayer.clearLayers();
+            try {
+                var coords = JSON.parse(coordsJson);
+                if (coords.length === 0) return;
+                var latlngs = coords.map(function(c) { return [c[0], c[1]]; });
+                var polyline = L.polyline(latlngs, {
+                    color: '#FF4444',
+                    weight: 6,
+                    opacity: 0.8,
+                    dashArray: '8, 8'
+                });
+                spurLayer.addLayer(polyline);
+            } catch(e) {
+                console.error('highlightSpur error:', e);
+            }
+        }
+
+        function clearRoute() {
+            routeLayer.clearLayers();
+            spurLayer.clearLayers();
+            waypointLayer.clearLayers();
+        }
+
+        function showWaypoints(coordsJson) {
+            waypointLayer.clearLayers();
+            try {
+                var coords = JSON.parse(coordsJson);
+                for (var i = 0; i < coords.length; i++) {
+                    L.marker([coords[i][0], coords[i][1]], {icon: waypointIcon}).addTo(waypointLayer);
+                }
+            } catch(e) {}
+        }
+
+        function centerOnLocation(lat, lng, zoom) {
+            map.setView([lat, lng], zoom || 13);
+        }
+    </script>
+</body>
+</html>

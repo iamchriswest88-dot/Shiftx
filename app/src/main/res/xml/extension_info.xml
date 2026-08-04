@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ExtensionInfo
+    displayName="Shift Extension"
+    icon="@drawable/ic_extension"
+    id="shift-extension"
+    scansDevices="false"
+    mapLayer="false"
+    fitFile="false">
+    <DataType
+        description="Live delta against Shift PR"
+        displayName="Live PR Delta"
+        graphical="true"
+        icon="@drawable/ic_extension"
+        typeId="pr-delta" />
+    <DataType
+        description="Distance remaining to the end of the segment"
+        displayName="Segment Distance Remaining"
+        graphical="true"
+        icon="@drawable/ic_extension"
+        typeId="segment-distance" />
+</ExtensionInfo>
