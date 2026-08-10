@@ -475,12 +475,13 @@ class CourseTrackerSimTest {
         val selected = CourseTracker.selectRepresentativeGhosts(matches)
 
         assert(selected.size == 5)
-        assert(selected[0].timeSeconds == 240) // PR / fastest
+        assert(selected[0].timeSeconds == 250) // PR / fastest deduplicated activity
         assert(selected[4].timeSeconds == 320) // Slowest
 
         val specs = selected.mapIndexed { idx, m -> GhostSpec(idx + 1, m.timeSeconds, m.curve) }
-        assert(specs[0].rank == 1 && specs[0].timeSeconds == 240)
+        assert(specs[0].rank == 1 && specs[0].timeSeconds == 250)
         assert(specs[4].rank == 5 && specs[4].timeSeconds == 320)
+
 
         println("  ✅ Representative 5-ghost selection (fast, mid, slow) and deduplication verified")
     }
