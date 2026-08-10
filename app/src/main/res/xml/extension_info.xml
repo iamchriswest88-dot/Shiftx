@@ -4,8 +4,9 @@
     icon="@drawable/ic_extension"
     id="shift-extension"
     scansDevices="false"
-    mapLayer="false"
+    mapLayer="true"
     fitFile="false">
+
     <DataType
         description="Live delta against Shift PR"
         displayName="Live PR Delta"

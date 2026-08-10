@@ -13,6 +13,7 @@ class ShiftExtension : KarooExtension("shift-extension", "1.0") {
     private lateinit var karooSystem: KarooSystemService
     private lateinit var courseTracker: CourseTracker
     private lateinit var pageNavigator: PageNavigator
+    private lateinit var mapLayerManager: MapLayerManager
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override val types by lazy {
@@ -28,16 +29,19 @@ class ShiftExtension : KarooExtension("shift-extension", "1.0") {
         karooSystem = KarooSystemService(applicationContext)
         courseTracker = CourseTracker(applicationContext, karooSystem)
         pageNavigator = PageNavigator(applicationContext, karooSystem, courseTracker)
+        mapLayerManager = MapLayerManager(applicationContext, karooSystem, courseTracker)
 
         // Consumers registered before the service connects are queued and
         // registered on connection, so it's safe to start tracking immediately.
         courseTracker.startTracking(serviceScope)
         pageNavigator.start(serviceScope)
+        mapLayerManager.start(serviceScope)
 
         karooSystem.connect { connected ->
             Log.i("ShiftExtension", "KarooSystem connected: $connected")
         }
     }
+
 
 
     override fun onDestroy() {

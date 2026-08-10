@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <!-- Ghost marker: simple orange chevron pointing up (oriented by ghostBearing) -->
+  <path
+      android:fillColor="#FF8C00"
+      android:pathData="M12,2 L21,20 L12,16 L3,20 Z" />
+</vector>
