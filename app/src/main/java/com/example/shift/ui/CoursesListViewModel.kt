@@ -51,6 +51,11 @@ class CoursesListViewModel(
     fun deleteCourse(courseId: String) {
         viewModelScope.launch {
             courseManager.deleteCourse(courseId)
+            matchCacheManager.clearMatchesForCourse(courseId)
+            val liveCourses = courseManager.coursesFlow.first()
+            val liveCourseIds = liveCourses.map { it.id }.toSet()
+            matchCacheManager.purgeDeletedRoutes(liveCourseIds)
         }
     }
+
 }

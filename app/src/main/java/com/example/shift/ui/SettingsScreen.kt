@@ -7,7 +7,9 @@ import androidx.compose.material.icons.filled.DirectionsBike
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -284,11 +286,32 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 Text("PUSH RUNS TO INTERVALS.ICU", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
             }
 
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Maintenance", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Button(
+                onClick = {
+                    viewModel.purgeDeletedRoutesAndRescan(clearScannedHistory = true) { purged, reHomed ->
+                        android.widget.Toast.makeText(
+                            context,
+                            "Purged $purged deleted matches, re-homed $reHomed strays. Rescanning all rides...",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("PURGE DELETED ROUTES & RESCAN ALL RIDES")
+            }
+
             val orphanedCount by viewModel.orphanedCount.collectAsState()
             if (orphanedCount > 0) {
-                Spacer(modifier = Modifier.height(24.dp))
-                Text("Maintenance", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -323,7 +346,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 shape = MaterialTheme.shapes.medium
             ) {
                 Icon(Icons.Default.DirectionsRun, contentDescription = null, modifier = Modifier.size(18.dp))
-
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("EXPORT DIAGNOSTICS")
             }
@@ -332,4 +354,5 @@ fun SettingsScreen(viewModel: MainViewModel) {
         }
     }
 }
+
 

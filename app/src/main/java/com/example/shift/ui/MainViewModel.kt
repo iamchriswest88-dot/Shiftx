@@ -928,7 +928,7 @@ class MainViewModel(
         }
     }
 
-    private fun scanUnscannedActivities() {
+    fun scanUnscannedActivities(limit: Int = 500) {
         val currentApi = api ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -936,10 +936,9 @@ class MainViewModel(
                 if (courses.isEmpty()) return@launch
 
                 val activitiesList = activities.value
-                // Limit to recent 30 activities to save API calls
-                val recentActivities = activitiesList.take(30)
+                val activitiesToScan = activitiesList.take(limit)
                 
-                for (activity in recentActivities) {
+                for (activity in activitiesToScan) {
                     var needsStream = false
                     val unscannedCourses = mutableListOf<com.example.shift.data.Course>()
                     
@@ -983,9 +982,6 @@ class MainViewModel(
                             com.example.shift.data.ScanLogBuffer.log(errMsg)
                         }
                     }
-
-
-
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1024,6 +1020,36 @@ class MainViewModel(
             }
         }
     }
+
+    fun purgeDeletedRoutesAndRescan(clearScannedHistory: Boolean = false, onComplete: ((Int, Int) -> Unit)? = null) {
+        viewModelScope.launch {
+            try {
+                val liveCourses = courseManager.coursesFlow.first()
+                val liveCourseIds = liveCourses.map { it.id }.toSet()
+                
+                // 1. Purge deleted route matches & scanned caches
+                val purgedCount = matchCacheManager.purgeDeletedRoutes(liveCourseIds)
+                
+                // 2. Repair stray matches for live courses
+                val reHomedCount = matchCacheManager.repairStrayMatches(liveCourses)
+                
+                // 3. Clear scanned history if full rescan requested
+                if (clearScannedHistory) {
+                    matchCacheManager.clearAllScannedCache()
+                }
+                
+                // 4. Reload segment counts & trigger deep rescan
+                reloadSegmentCounts()
+                scanUnscannedActivities(limit = 500)
+                
+                onComplete?.invoke(purgedCount, reHomedCount)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete?.invoke(0, 0)
+            }
+        }
+    }
+
 
     fun reloadSegmentCounts() {
         viewModelScope.launch {

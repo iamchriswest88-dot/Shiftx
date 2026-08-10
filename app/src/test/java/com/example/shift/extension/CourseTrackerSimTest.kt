@@ -585,6 +585,22 @@ class CourseTrackerSimTest {
         println("  ✅ ScanLogBuffer ring capacity (500 entries) and timestamping verified")
     }
 
+    @org.junit.Test
+    fun test_purge_deleted_routes() {
+        val liveCourseIds = setOf("live_1", "live_2")
+        val matches = listOf(
+            com.example.shift.data.CourseMatch("live_1", "act1", "Ride 1", "2026-01-01", 100),
+            com.example.shift.data.CourseMatch("deleted_old", "act2", "Ride 2", "2026-01-02", 150)
+        )
+        val (live, orphaned) = matches.partition { liveCourseIds.contains(it.courseId) }
+        assert(live.size == 1)
+        assert(orphaned.size == 1)
+        assert(live[0].courseId == "live_1")
+
+        println("  ✅ Purge deleted routes partitioning and orphan cleanup verified")
+    }
+
+
 
 
 

@@ -239,7 +239,44 @@ class MatchCacheManager(private val context: Context) {
         saveAllMatches(live)
         orphaned.size
     }
+
+    suspend fun purgeDeletedRoutes(liveCourseIds: Set<String>): Int = withContext(Dispatchers.IO) {
+        var purgedCount = 0
+        val allMatches = getAllMatches()
+        val (live, orphaned) = allMatches.partition { liveCourseIds.contains(it.courseId) }
+        if (orphaned.isNotEmpty()) {
+            saveAllMatches(live)
+            purgedCount += orphaned.size
+        }
+
+        if (scannedCacheFile.exists()) {
+            try {
+                val content = scannedCacheFile.readText()
+                if (content.isNotBlank()) {
+                    val map = json.decodeFromString<Map<String, List<String>>>(content).toMutableMap()
+                    val keysToRemove = map.keys.filter { !liveCourseIds.contains(it) }
+                    if (keysToRemove.isNotEmpty()) {
+                        keysToRemove.forEach { map.remove(it) }
+                        scannedCacheFile.writeText(json.encodeToString(map))
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        val logMsg = "Purged $purgedCount matches and scanned caches for deleted routes"
+        android.util.Log.i("MatchCacheManager", logMsg)
+        ScanLogBuffer.log(logMsg)
+        purgedCount
+    }
+
+    suspend fun clearAllScannedCache() = withContext(Dispatchers.IO) {
+        if (scannedCacheFile.exists()) {
+            scannedCacheFile.delete()
+        }
+    }
 }
+
 
 
 
