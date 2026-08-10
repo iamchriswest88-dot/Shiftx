@@ -151,17 +151,31 @@ fun CourseDetailScreen(
                         )
                     }
                 } else {
-                    FilledTonalButton(
-                        onClick = { viewModel.scanActivities() },
-                        shape = MaterialTheme.shapes.large,
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Scan", modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Scan Recent Rides")
+                        FilledTonalButton(
+                            onClick = { viewModel.scanActivities(forceRescan = false) },
+                            shape = MaterialTheme.shapes.large,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Scan", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Scan Recent Rides")
+                        }
+
+                        OutlinedButton(
+                            onClick = { viewModel.scanActivities(forceRescan = true) },
+                            shape = MaterialTheme.shapes.large,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text("Force Rescan All")
+                        }
                     }
                 }
             }
+
 
             Spacer(modifier = Modifier.height(16.dp))
 

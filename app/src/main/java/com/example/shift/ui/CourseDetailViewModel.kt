@@ -86,7 +86,7 @@ class CourseDetailViewModel(
         }
     }
 
-    fun scanActivities() {
+    fun scanActivities(forceRescan: Boolean = false) {
         if (_isScanning.value) return
         val currentCourse = _course.value ?: return
 
@@ -95,15 +95,24 @@ class CourseDetailViewModel(
             _scanProgress.value = 0f
             
             try {
+                if (forceRescan) {
+                    matchCacheManager.clearMatchesForCourse(courseId)
+                    _matches.value = emptyList()
+                }
                 val key = settingsManager.apiKeyFlow.firstOrNull() ?: ""
                 val api = ApiClient.create(key)
                 val activities = mainViewModel.activities.value
-                val scannedIds = matchCacheManager.getScannedActivities(courseId).toMutableSet()
+                val scannedIds = if (forceRescan) emptySet() else matchCacheManager.getScannedActivities(courseId)
                 
-                val toScan = activities.filter { !scannedIds.contains(it.id) }
+                val toScan = activities.filter { forceRescan || !scannedIds.contains(it.id) }
                 var count = 0
                 val total = toScan.size
                 
+                if (total == 0) {
+                    _scanStatus.value = "All rides up to date"
+                    return@launch
+                }
+
                 val newMatches = mutableListOf<CourseMatch>()
 
                 for (act in toScan) {
@@ -123,7 +132,7 @@ class CourseDetailViewModel(
                             loadCachedMatches()
                         }
                         
-                        scannedIds.add(act.id)
+                        scannedIds.toMutableSet().add(act.id)
                         matchCacheManager.markActivityAsScanned(courseId, act.id)
                         
                     } catch (e: Exception) {
@@ -134,8 +143,9 @@ class CourseDetailViewModel(
                 e.printStackTrace()
             } finally {
                 _isScanning.value = false
-                _scanStatus.value = "Up to date"
+                _scanStatus.value = "Scan complete"
             }
         }
     }
+
 }
