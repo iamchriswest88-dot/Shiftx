@@ -501,10 +501,8 @@ class MainViewModel(
                     }
                 }
                 
-                // Load segment counts
-                val allMatches = matchCacheManager.getAllMatches()
-                val counts = allMatches.groupingBy { it.activityId }.eachCount()
-                _segmentCounts.value = counts
+                // Load segment counts for live courses only
+                reloadSegmentCounts()
             } catch (e: Throwable) {
                 e.printStackTrace()
             } finally {
@@ -988,14 +986,18 @@ class MainViewModel(
     fun reloadSegmentCounts() {
         viewModelScope.launch {
             try {
+                val liveCourses = courseManager.coursesFlow.first()
+                val liveCourseIds = liveCourses.map { it.id }.toSet()
                 val allMatches = matchCacheManager.getAllMatches()
-                val counts = allMatches.groupingBy { it.activityId }.eachCount()
+                val validMatches = allMatches.filter { liveCourseIds.contains(it.courseId) }
+                val counts = validMatches.groupingBy { it.activityId }.eachCount()
                 _segmentCounts.value = counts
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
     }
+
 
     fun fetchPolylineIfNeeded(activityId: String) {
         if (_polylines.value.containsKey(activityId)) return
