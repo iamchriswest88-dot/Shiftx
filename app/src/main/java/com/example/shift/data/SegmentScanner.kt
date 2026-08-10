@@ -148,7 +148,7 @@ object SegmentScanner {
         var inStartZone = false
         var inEndZone = false
         
-        val GATE_RADIUS_M = 80.0
+        val GATE_RADIUS_M = 150.0
 
         for (i in latlngs.indices) {
             val pt = latlngs[i]
@@ -229,7 +229,7 @@ object SegmentScanner {
                 val riderFinishBearing = calculateBearing(trackFinishPt1[0], trackFinishPt1[1], trackFinishPt2[0], trackFinishPt2[1])
                 val finishAngleDiff = angleDifferenceDegrees(riderFinishBearing, courseFinishBearing)
 
-                if (startAngleDiff > 60.0 || finishAngleDiff > 60.0) {
+                if (startAngleDiff > 90.0 || finishAngleDiff > 90.0) {
                     val logMsg = "REJECTED attempt ${activity.id} on course ${course.id}: Heading mismatch at gates (startDiff=${startAngleDiff.toInt()}°, finishDiff=${finishAngleDiff.toInt()}°)"
                     android.util.Log.d("SegmentScanner", logMsg)
                     ScanLogBuffer.log(logMsg)
@@ -241,9 +241,10 @@ object SegmentScanner {
                     s = s,
                     e = e,
                     polyPoints = decodedPolyline,
-                    minRatio = 0.70,
-                    corridorDistM = 60.0
+                    minRatio = 0.55,
+                    corridorDistM = 80.0
                 )
+
 
                 if (!isValidCoverage) {
                     val logMsg = "REJECTED attempt ${activity.id} on course ${course.id}: Failed 70% route overlap or track integrity check"

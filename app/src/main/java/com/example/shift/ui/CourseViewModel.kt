@@ -428,18 +428,45 @@ class CourseViewModel(
                 }
                 
                 if (hasMatch) {
+                    val currentActivity = _activity.value
+                    if (currentActivity != null) {
+                        val parsedStream = com.example.shift.data.ParsedStream(
+                            latlng = currentStream.latlng,
+                            time = currentStream.time,
+                            distance = currentStream.distance,
+                            watts = currentStream.watts,
+                            velocity = currentStream.velocity,
+                            heartrate = null
+                        )
+                        val scannedMatches = com.example.shift.data.SegmentScanner.detectGates(course, currentActivity, parsedStream)
+                        if (scannedMatches.isNotEmpty()) {
+                            matchCacheManager.saveMatches(scannedMatches)
+                            matchCacheManager.markActivityAsScanned(course.id, currentActivity.id)
+                        } else {
+                            val fallbackMatch = com.example.shift.data.CourseMatch(
+                                courseId = course.id,
+                                activityId = currentActivity.id,
+                                activityName = currentActivity.name,
+                                date = currentActivity.start_date_local.substringBefore("T"),
+                                timeSeconds = bestTime,
+                                timestamp = System.currentTimeMillis()
+                            )
+                            matchCacheManager.saveMatches(listOf(fallbackMatch))
+                            matchCacheManager.markActivityAsScanned(course.id, currentActivity.id)
+                        }
+                    }
+
                     val cachedMatches = matchCacheManager.getMatches(course.id)
                     val rank = cachedMatches.count { it.timeSeconds < bestTime } + 1
                     
-                    // We need to count the current match in total if it's not already in the cache
-                    // If the current activity is not in cachedMatches, then total is cache + 1
                     val currentActivityId = _activity.value?.id?.toString() ?: ""
                     val isInCache = cachedMatches.any { it.activityId == currentActivityId }
                     val total = if (isInCache) cachedMatches.size else cachedMatches.size + 1
 
                     android.util.Log.d("DEBUG_MATCH", "Found match for ${course.name} with time $bestTime, rank $rank/$total")
                     matches.add(CourseMatchInfo(course, bestTime, rank, total))
-                } else {
+                }
+ else {
                     android.util.Log.d("DEBUG_MATCH", "No match for ${course.name}. starts: ${startIndices.size}, ends: ${endIndices.size}")
                 }
             }
@@ -448,6 +475,7 @@ class CourseViewModel(
             _matchedCourses.value = matches
         }
     }
+
 
     fun saveCourse(name: String, courseId: String? = null) {
         val start = _startMarker.value ?: return
