@@ -3,15 +3,134 @@ package com.example.shift.extension
 import com.example.shift.data.CurvePoint
 import kotlin.math.*
 
+data class GhostSpec(
+    val rank: Int,                 // 1..5 (1 = fastest)
+    val timeSeconds: Int,
+    val curve: List<CurvePoint>?   // null => constant-pace fallback
+)
 
 data class GhostPosition(
-    val latLng: Pair<Double, Double>?,
-    val bearing: Float?,
+    val rank: Int,
+    val latLng: Pair<Double, Double>,
+    val bearing: Float,
+    val progressRatio: Double,
     val isLinearFallback: Boolean,
-    val ghostDist: Double
+    val finished: Boolean          // ghost has completed the segment
 )
 
 object GhostEngine {
+
+    fun positionsAt(
+        elapsedSeconds: Double,
+        ghosts: List<GhostSpec>,
+        decodedPolyline: List<Pair<Double, Double>>,
+        cumDistances: List<Double>,
+        totalDist: Double
+    ): List<GhostPosition> {
+        if (ghosts.isEmpty() || totalDist <= 0.0 || decodedPolyline.isEmpty()) {
+            return emptyList()
+        }
+
+        val lastPoint = decodedPolyline.last()
+        val finalBearing = if (decodedPolyline.size >= 2) {
+            val pPenultimate = decodedPolyline[decodedPolyline.size - 2]
+            calculateBearing(pPenultimate.first, pPenultimate.second, lastPoint.first, lastPoint.second)
+        } else 0f
+
+        return ghosts.map { ghost ->
+            if (ghost.timeSeconds <= 0) {
+                GhostPosition(
+                    rank = ghost.rank,
+                    latLng = decodedPolyline.first(),
+                    bearing = 0f,
+                    progressRatio = 0.0,
+                    isLinearFallback = true,
+                    finished = false
+                )
+            } else if (elapsedSeconds >= ghost.timeSeconds.toDouble()) {
+                val isFallback = ghost.curve == null || ghost.curve.size < 2
+                GhostPosition(
+                    rank = ghost.rank,
+                    latLng = lastPoint,
+                    bearing = finalBearing,
+                    progressRatio = 1.0,
+                    isLinearFallback = isFallback,
+                    finished = true
+                )
+            } else {
+                val curve = ghost.curve
+                val isFallback = curve == null || curve.size < 2
+                val ghostDist: Double = if (!isFallback && curve != null) {
+                    if (elapsedSeconds <= curve.first().time) {
+                        curve.first().dist
+                    } else if (elapsedSeconds >= curve.last().time) {
+                        totalDist
+                    } else {
+                        var c1 = curve.first()
+                        var c2 = curve.last()
+                        for (i in 0 until curve.size - 1) {
+                            if (elapsedSeconds >= curve[i].time && elapsedSeconds <= curve[i + 1].time) {
+                                c1 = curve[i]
+                                c2 = curve[i + 1]
+                                break
+                            }
+                        }
+                        val dt = c2.time - c1.time
+                        if (dt > 0.0) {
+                            val frac = (elapsedSeconds - c1.time) / dt
+                            c1.dist + frac * (c2.dist - c1.dist)
+                        } else {
+                            c1.dist
+                        }
+                    }
+                } else {
+                    (elapsedSeconds / ghost.timeSeconds.toDouble()) * totalDist
+                }.coerceIn(0.0, totalDist)
+
+                val progressRatio = (ghostDist / totalDist).coerceIn(0.0, 1.0)
+
+                val latLng: Pair<Double, Double>
+                val bearing: Float
+
+                if (decodedPolyline.size == 1) {
+                    latLng = decodedPolyline[0]
+                    bearing = 0f
+                } else {
+                    var segIdx = 0
+                    for (i in 0 until cumDistances.size - 1) {
+                        if (ghostDist >= cumDistances[i] && ghostDist <= cumDistances[i + 1]) {
+                            segIdx = i
+                            break
+                        }
+                        if (i == cumDistances.size - 2) {
+                            segIdx = i
+                        }
+                    }
+
+                    val p1 = decodedPolyline[segIdx]
+                    val p2 = decodedPolyline[segIdx + 1]
+                    val segStartDist = cumDistances[segIdx]
+                    val segEndDist = cumDistances[segIdx + 1]
+                    val segLen = segEndDist - segStartDist
+
+                    val t = if (segLen > 0.0) ((ghostDist - segStartDist) / segLen).coerceIn(0.0, 1.0) else 0.0
+                    val lat = p1.first + t * (p2.first - p1.first)
+                    val lng = p1.second + t * (p2.second - p1.second)
+                    latLng = Pair(lat, lng)
+                    bearing = calculateBearing(p1.first, p1.second, p2.first, p2.second)
+                }
+
+                GhostPosition(
+                    rank = ghost.rank,
+                    latLng = latLng,
+                    bearing = bearing,
+                    progressRatio = progressRatio,
+                    isLinearFallback = isFallback,
+                    finished = false
+                )
+            }
+        }
+    }
 
     fun calculateGhostPosition(
         prRecord: PrRecord?,
@@ -19,68 +138,10 @@ object GhostEngine {
         decodedPolyline: List<Pair<Double, Double>>,
         cumDistances: List<Double>,
         totalDist: Double
-    ): GhostPosition {
-        if (prRecord == null || prRecord.timeSeconds <= 0 || totalDist <= 0.0 || decodedPolyline.isEmpty()) {
-            return GhostPosition(null, null, isLinearFallback = true, ghostDist = 0.0)
-        }
-
-        val curve = prRecord.curve
-        val isFallback = curve == null || curve.size < 2
-        val ghostDist: Double = if (!isFallback && curve != null) {
-            if (elapsedSeconds <= curve.first().time) {
-                curve.first().dist
-            } else if (elapsedSeconds >= curve.last().time) {
-                totalDist
-            } else {
-                var c1 = curve.first()
-                var c2 = curve.last()
-                for (i in 0 until curve.size - 1) {
-                    if (elapsedSeconds >= curve[i].time && elapsedSeconds <= curve[i + 1].time) {
-                        c1 = curve[i]
-                        c2 = curve[i + 1]
-                        break
-                    }
-                }
-                val dt = c2.time - c1.time
-                if (dt > 0.0) {
-                    val frac = (elapsedSeconds - c1.time) / dt
-                    c1.dist + frac * (c2.dist - c1.dist)
-                } else {
-                    c1.dist
-                }
-            }
-        } else {
-            (elapsedSeconds / prRecord.timeSeconds.toDouble()) * totalDist
-        }.coerceIn(0.0, totalDist)
-
-        if (decodedPolyline.size == 1) {
-            return GhostPosition(decodedPolyline[0], 0f, isFallback, ghostDist)
-        }
-
-        // Find segment on polyline containing ghostDist
-        var segIdx = 0
-        for (i in 0 until cumDistances.size - 1) {
-            if (ghostDist >= cumDistances[i] && ghostDist <= cumDistances[i + 1]) {
-                segIdx = i
-                break
-            }
-            if (i == cumDistances.size - 2) {
-                segIdx = i
-            }
-        }
-
-        val p1 = decodedPolyline[segIdx]
-        val p2 = decodedPolyline[segIdx + 1]
-        val segStartDist = cumDistances[segIdx]
-        val segEndDist = cumDistances[segIdx + 1]
-        val segLen = segEndDist - segStartDist
-
-        val t = if (segLen > 0.0) ((ghostDist - segStartDist) / segLen).coerceIn(0.0, 1.0) else 0.0
-        val lat = p1.first + t * (p2.first - p1.first)
-        val lng = p1.second + t * (p2.second - p1.second)
-        val bearing = calculateBearing(p1.first, p1.second, p2.first, p2.second)
-
-        return GhostPosition(Pair(lat, lng), bearing, isFallback, ghostDist)
+    ): GhostPosition? {
+        if (prRecord == null) return null
+        val spec = GhostSpec(rank = 1, timeSeconds = prRecord.timeSeconds, curve = prRecord.curve)
+        return positionsAt(elapsedSeconds, listOf(spec), decodedPolyline, cumDistances, totalDist).firstOrNull()
     }
 
     fun calculateExpectedTime(

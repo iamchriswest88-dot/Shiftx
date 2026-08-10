@@ -40,10 +40,12 @@ data class TrackingState(
     val ghostLatLng: Pair<Double, Double>? = null,
     val ghostBearing: Float? = null,
     val ghostIsLinearFallback: Boolean = false,
+    val ghostField: List<GhostPosition> = emptyList(),
     val activePolyline: List<Pair<Double, Double>>? = null,
     val activeEncodedPolyline: String? = null,
     val finished: FinishResult? = null
 )
+
 
 
 
@@ -179,7 +181,10 @@ class CourseTracker(
         return (x3 * x2 + y3 * y2).coerceIn(0.0, l2) / l2
     }
 
-    private fun processLocationUpdate(lat: Double, lng: Double) {
+    private var activeGhostSpecs: List<GhostSpec> = emptyList()
+
+    private suspend fun processLocationUpdate(lat: Double, lng: Double) {
+
         val course = activeCourse
         if (course == null) {
             // ── Not currently on a segment — check if we entered one ──
@@ -197,10 +202,24 @@ class CourseTracker(
                     currentCurve.add(CurvePoint(0.0, 0.0))
                     lastSampleTimeMs = activeStartTime
                     lastSampleDist = 0.0
-                    Log.d(TAG, "Polyline points=${decodedPolyline.size}, totalDist=${totalPolylineDist.toInt()}m")
+
+                    val matchesForCourse = matchManager.getMatches(c.id)
+                    val topMatches = matchesForCourse
+                        .distinctBy { it.activityId }
+                        .sortedBy { it.timeSeconds }
+                        .take(5)
+                    activeGhostSpecs = if (topMatches.isNotEmpty()) {
+                        topMatches.mapIndexed { idx, m -> GhostSpec(idx + 1, m.timeSeconds, m.curve) }
+                    } else {
+                        val pr = coursePrs[c.id]
+                        if (pr != null) listOf(GhostSpec(1, pr.timeSeconds, pr.curve)) else emptyList()
+                    }
+
+                    Log.d(TAG, "Polyline points=${decodedPolyline.size}, totalDist=${totalPolylineDist.toInt()}m, ghosts=${activeGhostSpecs.size}")
                     return
                 }
             }
+            activeGhostSpecs = emptyList()
             _state.value = TrackingState() // Idle
         } else {
             // ── Active on a segment ─────────────────────────────────────
@@ -222,6 +241,7 @@ class CourseTracker(
             if (minDist > OFF_COURSE_M) {
                 Log.w(TAG, "Off course (${minDist.toInt()}m from polyline), abandoning segment")
                 activeCourse = null
+                activeGhostSpecs = emptyList()
                 _state.value = TrackingState()
                 return
             }
@@ -262,6 +282,7 @@ class CourseTracker(
                     isNewPr = isNewPr
                 )
                 activeCourse = null
+                activeGhostSpecs = emptyList()
                 _state.value = TrackingState(
                     activeCourseId = course.id,
                     courseName = course.name,
@@ -274,14 +295,15 @@ class CourseTracker(
             val expectedTime = GhostEngine.calculateExpectedTime(prRecord, distanceCovered, totalPolylineDist)
             val timeDelta = if (expectedTime != null) elapsedSec - expectedTime else null
 
-            // 7. Ghost position and bearing
-            val ghostPos = GhostEngine.calculateGhostPosition(
-                prRecord,
+            // 7. Multi-ghost positions
+            val ghostField = GhostEngine.positionsAt(
                 elapsedSec,
+                activeGhostSpecs,
                 decodedPolyline,
                 cumPolylineDistances,
                 totalPolylineDist
             )
+            val prGhost = ghostField.find { it.rank == 1 }
 
             _state.value = TrackingState(
                 activeCourseId = course.id,
@@ -292,20 +314,19 @@ class CourseTracker(
                 prTimeSeconds = prRecord?.timeSeconds,
                 progressRatio = progressRatio,
                 riderLatLng = Pair(lat, lng),
-                ghostLatLng = ghostPos.latLng,
-                ghostBearing = ghostPos.bearing,
-                ghostIsLinearFallback = ghostPos.isLinearFallback,
+                ghostLatLng = prGhost?.latLng,
+                ghostBearing = prGhost?.bearing,
+                ghostIsLinearFallback = prGhost?.isLinearFallback ?: false,
+                ghostField = ghostField,
                 activePolyline = decodedPolyline,
                 activeEncodedPolyline = course.encodedPolyline,
                 finished = null
             )
-
-
         }
     }
 
-
     private fun recordAttempt(course: Course, elapsedSeconds: Int, curve: List<CurvePoint>? = null) {
+
         val match = CourseMatch(
             courseId = course.id,
             activityId = "live-${System.currentTimeMillis()}",
