@@ -457,5 +457,75 @@ class CourseTrackerSimTest {
         assert(resultAtStart.state != TrackerState.FINISHED) { "False finish detected on loop start!" }
         println("  ✅ Loop segment false finish prevented at start")
     }
+
+    @org.junit.Test
+    fun test_top5_ghost_selection() {
+        val matches = listOf(
+            com.example.shift.data.CourseMatch("c1", "act1", "Ride 1", "2026-01-01", 300),
+            com.example.shift.data.CourseMatch("c1", "act2", "Ride 2", "2026-01-02", 250),
+            com.example.shift.data.CourseMatch("c1", "act3", "Ride 3", "2026-01-03", 280),
+            com.example.shift.data.CourseMatch("c1", "act2", "Ride 2 Dup", "2026-01-04", 240),
+            com.example.shift.data.CourseMatch("c1", "act4", "Ride 4", "2026-01-05", 320),
+            com.example.shift.data.CourseMatch("c1", "act5", "Ride 5", "2026-01-06", 260),
+            com.example.shift.data.CourseMatch("c1", "act6", "Ride 6", "2026-01-07", 290)
+        )
+
+        val top5 = matches
+            .distinctBy { it.activityId }
+            .sortedBy { it.timeSeconds }
+            .take(5)
+
+        assert(top5.size == 5)
+        assert(top5[0].timeSeconds == 250)
+        assert(top5[1].timeSeconds == 260)
+        assert(top5[2].timeSeconds == 280)
+        assert(top5[3].timeSeconds == 290)
+        assert(top5[4].timeSeconds == 300)
+
+        val specs = top5.mapIndexed { idx, m -> GhostSpec(idx + 1, m.timeSeconds, m.curve) }
+        assert(specs[0].rank == 1 && specs[0].timeSeconds == 250)
+        assert(specs[4].rank == 5 && specs[4].timeSeconds == 300)
+
+        println("  ✅ Top 5 ghost selection, ordering, and deduplication verified")
+    }
+
+    @org.junit.Test
+    fun test_multighost_positions_at() {
+        val polyline = listOf(
+            Pair(51.5000, -0.1000),
+            Pair(51.5010, -0.0980),
+            Pair(51.5020, -0.0960)
+        )
+        val cumDistances = listOf(0.0, 200.0, 400.0)
+        val totalDist = 400.0
+
+        val curve = listOf(
+            com.example.shift.data.CurvePoint(0.0, 0.0),
+            com.example.shift.data.CurvePoint(200.0, 30.0),
+            com.example.shift.data.CurvePoint(400.0, 60.0)
+        )
+
+        val ghosts = listOf(
+            GhostSpec(rank = 1, timeSeconds = 60, curve = curve),
+            GhostSpec(rank = 2, timeSeconds = 80, curve = null),
+            GhostSpec(rank = 3, timeSeconds = 100, curve = null)
+        )
+
+        val activePositions = GhostEngine.positionsAt(40.0, ghosts, polyline, cumDistances, totalDist)
+        assert(activePositions.size == 3)
+        assert(activePositions[0].rank == 1 && !activePositions[0].finished && abs(activePositions[0].progressRatio - 0.6667) < 0.01)
+        assert(activePositions[1].rank == 2 && !activePositions[1].finished && abs(activePositions[1].progressRatio - 0.5) < 0.01)
+        assert(activePositions[2].rank == 3 && !activePositions[2].finished && abs(activePositions[2].progressRatio - 0.4) < 0.01)
+
+        val endPositions = GhostEngine.positionsAt(70.0, ghosts, polyline, cumDistances, totalDist)
+        val g1 = endPositions.find { it.rank == 1 }!!
+        assert(g1.finished && g1.progressRatio == 1.0 && g1.latLng == polyline.last())
+
+        val g2 = endPositions.find { it.rank == 2 }!!
+        assert(!g2.finished && abs(g2.progressRatio - 0.875) < 0.01)
+
+        println("  ✅ Multi-ghost positionsAt, curve vs fallback, and finish parking verified")
+    }
 }
+
 
