@@ -3,6 +3,7 @@ package com.example.shift.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -19,6 +20,7 @@ class SettingsManager(private val context: Context) {
         val ORS_API_KEY = stringPreferencesKey("ors_api_key")
         val FIREBASE_URL = stringPreferencesKey("firebase_url")
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
+        val AUTO_OPEN_SEGMENT_PAGE = booleanPreferencesKey("auto_open_segment_page")
     }
 
     val apiKeyFlow: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -39,6 +41,10 @@ class SettingsManager(private val context: Context) {
 
     val geminiApiKeyFlow: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[GEMINI_API_KEY]
+    }
+
+    val autoOpenSegmentPageFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[AUTO_OPEN_SEGMENT_PAGE] ?: true
     }
 
     suspend fun saveApiKey(apiKey: String) {
@@ -70,4 +76,11 @@ class SettingsManager(private val context: Context) {
             preferences[GEMINI_API_KEY] = apiKey
         }
     }
+
+    suspend fun saveAutoOpenSegmentPage(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[AUTO_OPEN_SEGMENT_PAGE] = enabled
+        }
+    }
 }
+

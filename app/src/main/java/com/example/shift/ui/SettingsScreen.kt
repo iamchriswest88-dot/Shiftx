@@ -30,6 +30,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val currentOrsApiKey by viewModel.orsApiKey.collectAsState()
     val currentFirebaseUrl by viewModel.firebaseUrl.collectAsState()
     val currentGeminiApiKey by viewModel.geminiApiKey.collectAsState()
+    val autoOpenSegmentPage by viewModel.autoOpenSegmentPage.collectAsState()
 
     var apiKey by remember { mutableStateOf(currentApiKey) }
     var athleteId by remember { mutableStateOf(currentAthleteId) }
@@ -107,6 +108,26 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     focusedBorderColor = MaterialTheme.colorScheme.primary
                 )
             )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text("Live Tracking", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Auto-open segment page", style = MaterialTheme.typography.bodyLarge)
+                    Text("Automatically page to Segment Page on start gate entry", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                }
+                Switch(
+                    checked = autoOpenSegmentPage,
+                    onCheckedChange = { viewModel.setAutoOpenSegmentPage(it) }
+                )
+            }
+
 
             Spacer(modifier = Modifier.height(32.dp))
 

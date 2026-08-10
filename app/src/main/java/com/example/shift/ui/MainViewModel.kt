@@ -86,6 +86,14 @@ class MainViewModel(
     val orsApiKey: StateFlow<String> = settingsManager.orsApiKeyFlow.map { it ?: "" }.stateIn(viewModelScope, SharingStarted.Lazily, "")
     val firebaseUrl: StateFlow<String> = settingsManager.firebaseUrlFlow.map { it ?: "" }.stateIn(viewModelScope, SharingStarted.Lazily, "")
     val geminiApiKey: StateFlow<String> = settingsManager.geminiApiKeyFlow.map { it ?: "" }.stateIn(viewModelScope, SharingStarted.Lazily, "")
+    val autoOpenSegmentPage: StateFlow<Boolean> = settingsManager.autoOpenSegmentPageFlow.stateIn(viewModelScope, SharingStarted.Lazily, true)
+
+    fun setAutoOpenSegmentPage(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.saveAutoOpenSegmentPage(enabled)
+        }
+    }
+
 
     private val _apiActivities = MutableStateFlow<List<Activity>>(emptyList())
     
