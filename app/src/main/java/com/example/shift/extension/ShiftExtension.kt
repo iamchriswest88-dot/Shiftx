@@ -2,7 +2,9 @@ package com.example.shift.extension
 
 import android.util.Log
 import io.hammerhead.karooext.KarooSystemService
+import io.hammerhead.karooext.extension.KarooExtension
 import io.hammerhead.karooext.internal.Emitter
+
 import io.hammerhead.karooext.models.MapEffect
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
