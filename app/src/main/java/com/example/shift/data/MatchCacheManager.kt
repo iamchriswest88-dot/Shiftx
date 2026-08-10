@@ -117,4 +117,20 @@ class MatchCacheManager(private val context: Context) {
             }
         }
     }
+
+    suspend fun clearScannedCacheForCourse(courseId: String) = withContext(Dispatchers.IO) {
+        if (scannedCacheFile.exists()) {
+            try {
+                val content = scannedCacheFile.readText()
+                if (content.isNotBlank()) {
+                    val map = json.decodeFromString<Map<String, List<String>>>(content).toMutableMap()
+                    map.remove(courseId)
+                    scannedCacheFile.writeText(json.encodeToString(map))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 }
+

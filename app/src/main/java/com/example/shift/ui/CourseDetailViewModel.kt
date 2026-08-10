@@ -96,8 +96,7 @@ class CourseDetailViewModel(
             
             try {
                 if (forceRescan) {
-                    matchCacheManager.clearMatchesForCourse(courseId)
-                    _matches.value = emptyList()
+                    matchCacheManager.clearScannedCacheForCourse(courseId)
                 }
                 val key = settingsManager.apiKeyFlow.firstOrNull() ?: ""
                 val api = ApiClient.create(key)
@@ -113,43 +112,41 @@ class CourseDetailViewModel(
                     return@launch
                 }
 
-                val newMatches = mutableListOf<CourseMatch>()
-
                 for (act in toScan) {
                     count++
                     _scanProgress.value = count.toFloat() / total.toFloat()
                     _scanStatus.value = "Scanning ${count}/${total}..."
                     
-                    try {
-                        val stream: com.example.shift.data.ParsedStream = try {
-                            val rawJson = api.getActivityStreamsRaw(act.id, "latlng,time,distance,watts,velocity_smooth")
-                            SegmentScanner.parseStream(rawJson)
-                        } catch (e: Exception) {
-                            com.example.shift.data.ParsedStream(null, null, null, null, null, null)
-                        }
-
-                        
-                        val matches = SegmentScanner.detectGates(currentCourse, act, stream)
-                        if (matches.isNotEmpty()) {
-                            newMatches.addAll(matches)
-                            val allCurrentMatches = matchCacheManager.getMatches(courseId) + newMatches
-                            matchCacheManager.saveMatches(allCurrentMatches)
-                            loadCachedMatches()
-                        }
-                        
-                        matchCacheManager.markActivityAsScanned(courseId, act.id)
+                    var fetchSuccess = false
+                    val stream: com.example.shift.data.ParsedStream = try {
+                        val rawJson = api.getActivityStreamsRaw(act.id, "latlng,time,distance,watts,velocity_smooth")
+                        fetchSuccess = true
+                        SegmentScanner.parseStream(rawJson)
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        com.example.shift.data.ParsedStream(null, null, null, null, null, null)
                     }
-
+                    
+                    val matches = SegmentScanner.detectGates(currentCourse, act, stream)
+                    if (matches.isNotEmpty()) {
+                        matchCacheManager.saveMatches(matches)
+                        loadCachedMatches()
+                    }
+                    
+                    if (fetchSuccess || matches.isNotEmpty() || !act.map?.summary_polyline.isNullOrEmpty()) {
+                        matchCacheManager.markActivityAsScanned(courseId, act.id)
+                    }
+                    
+                    kotlinx.coroutines.delay(60L)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
                 _isScanning.value = false
                 _scanStatus.value = "Scan complete"
+                loadCachedMatches()
             }
         }
     }
+
 
 }
