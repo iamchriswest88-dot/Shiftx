@@ -505,11 +505,12 @@ class MainViewModel(
                 val allMatches = matchCacheManager.getAllMatches()
                 val counts = allMatches.groupingBy { it.activityId }.eachCount()
                 _segmentCounts.value = counts
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             } finally {
                 _isLoading.value = false
             }
+
             
             // Trigger auto-scan in the background without blocking isLoading
             scanUnscannedActivities()
@@ -645,10 +646,16 @@ class MainViewModel(
     private suspend fun fetchSleepAndVitals() {
         withContext(Dispatchers.IO) {
             try {
-                if (androidx.health.connect.client.HealthConnectClient.getSdkStatus(application) != androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE) {
+                val sdkStatus = try {
+                    androidx.health.connect.client.HealthConnectClient.getSdkStatus(application)
+                } catch (t: Throwable) {
+                    androidx.health.connect.client.HealthConnectClient.SDK_UNAVAILABLE
+                }
+                if (sdkStatus != androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE) {
                     return@withContext
                 }
                 val client = androidx.health.connect.client.HealthConnectClient.getOrCreate(application)
+
                 val granted = client.permissionController.getGrantedPermissions()
                 
                 val hasSleepPerm = granted.contains(androidx.health.connect.client.permission.HealthPermission.getReadPermission(androidx.health.connect.client.records.SleepSessionRecord::class))
@@ -752,8 +759,14 @@ class MainViewModel(
         return withContext(Dispatchers.IO) {
             val activitiesList = mutableListOf<Activity>()
             try {
-                if (androidx.health.connect.client.HealthConnectClient.getSdkStatus(application) == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE) {
+                val sdkStatus = try {
+                    androidx.health.connect.client.HealthConnectClient.getSdkStatus(application)
+                } catch (t: Throwable) {
+                    androidx.health.connect.client.HealthConnectClient.SDK_UNAVAILABLE
+                }
+                if (sdkStatus == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE) {
                     val client = androidx.health.connect.client.HealthConnectClient.getOrCreate(application)
+
                     val granted = client.permissionController.getGrantedPermissions()
                     android.util.Log.d("HealthConnect", "Granted permissions: $granted")
                     

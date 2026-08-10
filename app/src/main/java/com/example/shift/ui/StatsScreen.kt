@@ -122,7 +122,9 @@ fun StatsScreen(
     val dailyData = remember(activities) {
         val data   = mutableListOf<Pair<Double, Double>>()
         val seed   = activities.filter {
-            LocalDate.parse(it.start_date_local.take(10)).isBefore(today.minusDays(days.toLong()))
+            try {
+                LocalDate.parse(it.start_date_local.take(10)).isBefore(today.minusDays(days.toLong()))
+            } catch (e: Exception) { false }
         }.maxByOrNull { it.start_date_local }
         var ctl    = seed?.icu_ctl ?: 0.0
         var atl    = seed?.icu_atl ?: 0.0
@@ -134,7 +136,9 @@ fun StatsScreen(
         for (i in (days - 1) downTo 0) {
             val date = today.minusDays(i.toLong())
             val dateStr = date.toString()
-            val dayActs = activities.filter { it.start_date_local.take(10) == dateStr }
+            val dayActs = activities.filter {
+                try { it.start_date_local.take(10) == dateStr } catch (e: Exception) { false }
+            }
             val tss     = dayActs.sumOf { it.icu_training_load ?: 0.0 }
             ctl = ctl * ctlD + tss * ctlI
             atl = atl * atlD + tss * atlI
@@ -149,12 +153,8 @@ fun StatsScreen(
     val currentAtl = dailyData.lastOrNull()?.second?.roundToInt() ?: 0
     val currentTsb = currentCtl - currentAtl
 
-    if (isLoading) {
-        com.example.shift.ui.components.FullScreenLoading()
-        return
-    }
-
     Scaffold(
+
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
