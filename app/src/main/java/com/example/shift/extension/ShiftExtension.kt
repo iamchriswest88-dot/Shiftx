@@ -2,7 +2,8 @@ package com.example.shift.extension
 
 import android.util.Log
 import io.hammerhead.karooext.KarooSystemService
-import io.hammerhead.karooext.extension.KarooExtension
+import io.hammerhead.karooext.internal.Emitter
+import io.hammerhead.karooext.models.MapEffect
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,7 +30,7 @@ class ShiftExtension : KarooExtension("shift-extension", "1.0") {
         karooSystem = KarooSystemService(applicationContext)
         courseTracker = CourseTracker(applicationContext, karooSystem)
         pageNavigator = PageNavigator(applicationContext, karooSystem, courseTracker)
-        mapLayerManager = MapLayerManager(applicationContext, karooSystem, courseTracker)
+        mapLayerManager = MapLayerManager(applicationContext, courseTracker)
 
         // Consumers registered before the service connects are queued and
         // registered on connection, so it's safe to start tracking immediately.
@@ -41,6 +42,11 @@ class ShiftExtension : KarooExtension("shift-extension", "1.0") {
             Log.i("ShiftExtension", "KarooSystem connected: $connected")
         }
     }
+
+    override fun startMap(emitter: Emitter<MapEffect>) {
+        mapLayerManager.startMap(emitter)
+    }
+
 
 
 
