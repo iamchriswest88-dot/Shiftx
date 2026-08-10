@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.*
 
 data class TrackingState(
@@ -53,12 +54,11 @@ class CourseTracker(
     private var decodedPolyline: List<Pair<Double, Double>> = emptyList()
     private var totalPolylineDist: Double = 0.0
 
-    private var started = false
+    private val started = AtomicBoolean(false)
 
     fun startTracking(scope: CoroutineScope) {
         // Guard against duplicate collectors if connect() fires more than once (reconnects)
-        if (started) return
-        started = true
+        if (!started.compareAndSet(false, true)) return
 
         // Continuously collect courses so edits in the app are picked up live
         scope.launch(Dispatchers.IO) {
@@ -164,18 +164,7 @@ class CourseTracker(
         } else {
             // ── Active on a segment ─────────────────────────────────────
 
-            // 1. Check proximity to the END point first
-            val distToEnd = haversineMeters(lat, lng, course.endLat, course.endLng)
-            if (distToEnd < END_RADIUS_M) {
-                val elapsedSeconds = ((System.currentTimeMillis() - activeStartTime) / 1000.0).toInt()
-                Log.i(TAG, "Finished segment '${course.name}' in ${elapsedSeconds}s")
-                recordAttempt(course, elapsedSeconds)
-                activeCourse = null
-                _state.value = TrackingState()
-                return
-            }
-
-            // 2. Find closest segment on polyline
+            // 1. Find closest segment on polyline
             var minDist = Double.MAX_VALUE
             var closestIndex = 0
             for (i in 0 until decodedPolyline.size - 1) {
@@ -188,7 +177,7 @@ class CourseTracker(
                 }
             }
 
-            // 3. Off-course check
+            // 2. Off-course check
             if (minDist > OFF_COURSE_M) {
                 Log.w(TAG, "Off course (${minDist.toInt()}m from polyline), abandoning segment")
                 activeCourse = null
@@ -196,16 +185,27 @@ class CourseTracker(
                 return
             }
 
-            // 4. Distance remaining
+            // 3. Distance remaining and progress ratio
             val distanceCovered = distanceAlongPolyline(decodedPolyline, closestIndex, lat, lng)
             val distanceRemaining = (totalPolylineDist - distanceCovered).coerceAtLeast(0.0)
+            val progressRatio = if (totalPolylineDist > 0) (distanceCovered / totalPolylineDist).coerceIn(0.0, 1.0) else 0.0
+            val elapsedSeconds = ((System.currentTimeMillis() - activeStartTime) / 1000.0).toInt()
+
+            // 4. Finish check: proximity to END point + meaningful progress (>80%) + min 10s elapsed
+            val distToEnd = haversineMeters(lat, lng, course.endLat, course.endLng)
+            if (distToEnd < END_RADIUS_M && progressRatio > 0.8 && elapsedSeconds >= 10) {
+                Log.i(TAG, "Finished segment '${course.name}' in ${elapsedSeconds}s")
+                recordAttempt(course, elapsedSeconds)
+                activeCourse = null
+                _state.value = TrackingState()
+                return
+            }
 
             // 5. Time delta against PR
             var timeDelta: Double? = null
             val prTime = coursePrs[course.id]
             if (prTime != null && totalPolylineDist > 0) {
                 val elapsedTime = (System.currentTimeMillis() - activeStartTime) / 1000.0
-                val progressRatio = (distanceCovered / totalPolylineDist).coerceIn(0.0, 1.0)
                 val expectedTime = prTime * progressRatio
                 timeDelta = elapsedTime - expectedTime
             }
@@ -217,6 +217,7 @@ class CourseTracker(
             )
         }
     }
+
 
     private fun recordAttempt(course: Course, elapsedSeconds: Int) {
         val match = CourseMatch(

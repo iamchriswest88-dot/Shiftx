@@ -14,12 +14,16 @@ import io.hammerhead.karooext.models.UpdateGraphicConfig
 import io.hammerhead.karooext.models.ViewConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class DistanceRemainingDataType(
     extensionId: String,
     private val tracker: CourseTracker
 ) : DataTypeImpl(extensionId, "segment-distance") {
+
+    private var configJob: Job? = null
+    private var viewJob: Job? = null
 
     override fun startStream(emitter: Emitter<StreamState>) {
         val job = CoroutineScope(Dispatchers.IO).launch {
@@ -39,10 +43,12 @@ class DistanceRemainingDataType(
     }
 
     override fun startView(context: Context, config: ViewConfig, emitter: ViewEmitter) {
-        val configJob = CoroutineScope(Dispatchers.IO).launch {
+        configJob?.cancel()
+        viewJob?.cancel()
+        configJob = CoroutineScope(Dispatchers.IO).launch {
             emitter.onNext(UpdateGraphicConfig(showHeader = true))
         }
-        val viewJob = CoroutineScope(Dispatchers.IO).launch {
+        viewJob = CoroutineScope(Dispatchers.IO).launch {
             tracker.state.collect { state ->
                 val views = RemoteViews(context.packageName, R.layout.layout_distance_remaining)
                 val distanceMeters = state.distanceRemainingMeters
@@ -61,8 +67,11 @@ class DistanceRemainingDataType(
             }
         }
         emitter.setCancellable {
-            configJob.cancel()
-            viewJob.cancel()
+            configJob?.cancel()
+            configJob = null
+            viewJob?.cancel()
+            viewJob = null
         }
     }
 }
+

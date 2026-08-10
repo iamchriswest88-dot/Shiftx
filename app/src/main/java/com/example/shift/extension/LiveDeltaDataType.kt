@@ -14,6 +14,7 @@ import io.hammerhead.karooext.models.UpdateGraphicConfig
 import io.hammerhead.karooext.models.ViewConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -21,6 +22,9 @@ class LiveDeltaDataType(
     extensionId: String,
     private val tracker: CourseTracker
 ) : DataTypeImpl(extensionId, "pr-delta") {
+
+    private var configJob: Job? = null
+    private var viewJob: Job? = null
 
     /**
      * The Karoo decides whether a data field has data based on what startStream
@@ -46,10 +50,12 @@ class LiveDeltaDataType(
     }
 
     override fun startView(context: Context, config: ViewConfig, emitter: ViewEmitter) {
-        val configJob = CoroutineScope(Dispatchers.IO).launch {
+        configJob?.cancel()
+        viewJob?.cancel()
+        configJob = CoroutineScope(Dispatchers.IO).launch {
             emitter.onNext(UpdateGraphicConfig(showHeader = true))
         }
-        val viewJob = CoroutineScope(Dispatchers.IO).launch {
+        viewJob = CoroutineScope(Dispatchers.IO).launch {
             tracker.state.collect { state ->
                 // Build a fresh RemoteViews every update. Reusing one instance
                 // accumulates actions on every set*() call and eventually blows
@@ -71,8 +77,11 @@ class LiveDeltaDataType(
             }
         }
         emitter.setCancellable {
-            configJob.cancel()
-            viewJob.cancel()
+            configJob?.cancel()
+            configJob = null
+            viewJob?.cancel()
+            viewJob = null
         }
     }
 }
+
