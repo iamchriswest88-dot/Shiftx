@@ -123,6 +123,7 @@ class CourseDetailViewModel(
                         fetchSuccess = true
                         SegmentScanner.parseStream(rawJson)
                     } catch (e: Exception) {
+                        android.util.Log.w("CourseDetailVM", "Failed stream fetch for activity ${act.id}: ${e.message}")
                         com.example.shift.data.ParsedStream(null, null, null, null, null, null)
                     }
                     
@@ -132,11 +133,12 @@ class CourseDetailViewModel(
                         loadCachedMatches()
                     }
                     
-                    if (fetchSuccess || matches.isNotEmpty() || !act.map?.summary_polyline.isNullOrEmpty()) {
+                    if (fetchSuccess) {
                         matchCacheManager.markActivityAsScanned(courseId, act.id)
                     }
                     
                     kotlinx.coroutines.delay(60L)
+
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

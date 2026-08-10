@@ -952,29 +952,31 @@ class MainViewModel(
                     
                     if (needsStream && unscannedCourses.isNotEmpty()) {
                         try {
+                            var fetchSuccess = false
                             val stream: com.example.shift.data.ParsedStream = try {
                                 val rawJson = currentApi.getActivityStreamsRaw(activity.id, "latlng,time,distance,watts,velocity_smooth")
+                                fetchSuccess = true
                                 SegmentScanner.parseStream(rawJson)
                             } catch (e: Exception) {
+                                android.util.Log.w("MainViewModel", "Failed stream fetch for activity ${activity.id}: ${e.message}")
                                 com.example.shift.data.ParsedStream(null, null, null, null, null, null)
                             }
-
                             
-                            val newMatches = mutableListOf<CourseMatch>()
-                            for (course in unscannedCourses) {
-                                val matches = SegmentScanner.detectGates(course, activity, stream)
-                                if (matches.isNotEmpty()) {
-                                    val allCurrentMatches = matchCacheManager.getMatches(course.id) + matches
-                                    matchCacheManager.saveMatches(allCurrentMatches)
+                            if (fetchSuccess) {
+                                for (course in unscannedCourses) {
+                                    val matches = SegmentScanner.detectGates(course, activity, stream)
+                                    if (matches.isNotEmpty()) {
+                                        matchCacheManager.saveMatches(matches)
+                                    }
+                                    matchCacheManager.markActivityAsScanned(course.id, activity.id)
                                 }
-                                matchCacheManager.markActivityAsScanned(course.id, activity.id)
+                                reloadSegmentCounts()
                             }
-                            // Refresh counts after scanning each activity
-                            reloadSegmentCounts()
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            android.util.Log.w("MainViewModel", "Scan error for activity ${activity.id}: ${e.message}")
                         }
                     }
+
 
                 }
             } catch (e: Exception) {
