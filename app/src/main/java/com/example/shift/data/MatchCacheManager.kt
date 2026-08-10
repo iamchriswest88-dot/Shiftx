@@ -219,8 +219,11 @@ class MatchCacheManager(private val context: Context) {
             }
             liveMatchesByCourse.values.forEach { finalMatches.addAll(it) }
             saveAllMatches(finalMatches)
-            android.util.Log.i("MatchCacheManager", "Re-homed $reHomedCount matches from ${reHomedStrayCourseIds.size} stray course ids")
+            val logMsg = "Re-homed $reHomedCount matches from ${reHomedStrayCourseIds.size} stray course ids"
+            android.util.Log.i("MatchCacheManager", logMsg)
+            ScanLogBuffer.log(logMsg)
         }
+
 
         reHomedCount
     }

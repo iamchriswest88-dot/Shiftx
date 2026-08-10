@@ -195,6 +195,8 @@ object SegmentScanner {
             }
         }
 
+        ScanLogBuffer.log("Gate hits for activity ${activity.id} on course ${course.id}: startHits=${startIndices.size}, finishHits=${endIndices.size}")
+
         val decodedPolyline = course.encodedPolyline?.let { PolylineUtils.decodePolyline(it) } ?: return emptyList()
         if (decodedPolyline.size < 2) return emptyList()
 
@@ -228,7 +230,9 @@ object SegmentScanner {
                 val finishAngleDiff = angleDifferenceDegrees(riderFinishBearing, courseFinishBearing)
 
                 if (startAngleDiff > 60.0 || finishAngleDiff > 60.0) {
-                    android.util.Log.d("SegmentScanner", "Rejected attempt: Heading mismatch at gates (startDiff=${startAngleDiff.toInt()}°, finishDiff=${finishAngleDiff.toInt()}°)")
+                    val logMsg = "REJECTED attempt ${activity.id} on course ${course.id}: Heading mismatch at gates (startDiff=${startAngleDiff.toInt()}°, finishDiff=${finishAngleDiff.toInt()}°)"
+                    android.util.Log.d("SegmentScanner", logMsg)
+                    ScanLogBuffer.log(logMsg)
                     continue
                 }
 
@@ -242,7 +246,9 @@ object SegmentScanner {
                 )
 
                 if (!isValidCoverage) {
-                    android.util.Log.d("SegmentScanner", "Rejected attempt: Failed 70% route overlap or track integrity check")
+                    val logMsg = "REJECTED attempt ${activity.id} on course ${course.id}: Failed 70% route overlap or track integrity check"
+                    android.util.Log.d("SegmentScanner", logMsg)
+                    ScanLogBuffer.log(logMsg)
                     continue
                 }
                 
@@ -285,6 +291,9 @@ object SegmentScanner {
                             estimatedTime = isEstimated
                         )
                     )
+                    val acceptMsg = "ACCEPTED attempt ${activity.id} on course ${course.id}: time=${timeTaken}s (attemptIndex=$currentAttemptIdx, estimated=$isEstimated)"
+                    android.util.Log.i("SegmentScanner", acceptMsg)
+                    ScanLogBuffer.log(acceptMsg)
                     lastEndIndex = e
                 }
             }
@@ -323,10 +332,13 @@ object SegmentScanner {
         }
         val trackIntegrity = inCorridorTrackCount.toDouble() / trackSegment.size
 
-        android.util.Log.d("SegmentScanner", "Coverage evaluation: courseCoverage=${(courseCoverage*100).toInt()}%, trackIntegrity=${(trackIntegrity*100).toInt()}%")
+        val covLogMsg = "Coverage evaluation: courseCoverage=${(courseCoverage*100).toInt()}%, trackIntegrity=${(trackIntegrity*100).toInt()}%"
+        android.util.Log.d("SegmentScanner", covLogMsg)
+        ScanLogBuffer.log(covLogMsg)
 
         return courseCoverage >= minRatio && trackIntegrity >= minRatio
     }
+
 
     private fun calculateBearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val phi1 = Math.toRadians(lat1)

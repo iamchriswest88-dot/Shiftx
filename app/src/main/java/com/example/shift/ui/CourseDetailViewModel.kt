@@ -125,16 +125,21 @@ class CourseDetailViewModel(
                     count++
                     _scanProgress.value = count.toFloat() / total.toFloat()
                     _scanStatus.value = "Scanning ${count}/${total}..."
+                    com.example.shift.data.ScanLogBuffer.log("Scanning activity ${act.id} ('${act.name}', ${act.start_date_local}) for course ${currentCourse.name}")
                     
                     var fetchSuccess = false
                     val stream: com.example.shift.data.ParsedStream = try {
                         val rawJson = api.getActivityStreamsRaw(act.id, "latlng,time,distance,watts,velocity_smooth")
                         fetchSuccess = true
+                        com.example.shift.data.ScanLogBuffer.log("Stream fetch OK for activity ${act.id}")
                         SegmentScanner.parseStream(rawJson)
                     } catch (e: Exception) {
-                        android.util.Log.w("CourseDetailVM", "Failed stream fetch for activity ${act.id}: ${e.message}")
+                        val errMsg = "Failed stream fetch for activity ${act.id}: ${e.message}"
+                        android.util.Log.w("CourseDetailVM", errMsg)
+                        com.example.shift.data.ScanLogBuffer.log(errMsg)
                         com.example.shift.data.ParsedStream(null, null, null, null, null, null)
                     }
+
                     
                     val matches = SegmentScanner.detectGates(currentCourse, act, stream)
                     if (matches.isNotEmpty()) {

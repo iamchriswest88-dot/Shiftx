@@ -310,7 +310,26 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 }
             }
 
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Diagnostics", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    viewModel.exportDiagnostics(context) { fileName ->
+                        android.widget.Toast.makeText(context, "Exported $fileName", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Icon(Icons.Default.DirectionsRun, contentDescription = null, modifier = Modifier.size(18.dp))
+
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("EXPORT DIAGNOSTICS")
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
+

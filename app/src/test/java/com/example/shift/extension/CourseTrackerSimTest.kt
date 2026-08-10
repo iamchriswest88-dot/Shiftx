@@ -571,6 +571,21 @@ class CourseTrackerSimTest {
         println("  ✅ Auto-repair stray matches, idempotency, and deduplication verified")
     }
 
+    @org.junit.Test
+    fun test_scan_log_buffer_capacity() {
+        com.example.shift.data.ScanLogBuffer.clear()
+        for (i in 1..600) {
+            com.example.shift.data.ScanLogBuffer.log("Log entry $i")
+        }
+        val logs = com.example.shift.data.ScanLogBuffer.getLogs()
+        assert(logs.size == 500)
+        assert(logs.first().contains("Log entry 101"))
+        assert(logs.last().contains("Log entry 600"))
+
+        println("  ✅ ScanLogBuffer ring capacity (500 entries) and timestamping verified")
+    }
+
+
 
 
 

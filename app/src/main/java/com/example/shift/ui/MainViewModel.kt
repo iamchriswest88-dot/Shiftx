@@ -1,6 +1,9 @@
 package com.example.shift.ui
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
+
+
 import androidx.lifecycle.viewModelScope
 import com.example.shift.data.Activity
 import com.example.shift.data.ActivityMap
@@ -950,13 +953,17 @@ class MainViewModel(
                     
                     if (needsStream && unscannedCourses.isNotEmpty()) {
                         try {
+                            com.example.shift.data.ScanLogBuffer.log("Auto-scanning activity ${activity.id} ('${activity.name}', ${activity.start_date_local}) against ${unscannedCourses.size} unscanned courses")
                             var fetchSuccess = false
                             val stream: com.example.shift.data.ParsedStream = try {
                                 val rawJson = currentApi.getActivityStreamsRaw(activity.id, "latlng,time,distance,watts,velocity_smooth")
                                 fetchSuccess = true
+                                com.example.shift.data.ScanLogBuffer.log("Stream fetch OK for activity ${activity.id}")
                                 SegmentScanner.parseStream(rawJson)
                             } catch (e: Exception) {
-                                android.util.Log.w("MainViewModel", "Failed stream fetch for activity ${activity.id}: ${e.message}")
+                                val errMsg = "Failed stream fetch for activity ${activity.id}: ${e.message}"
+                                android.util.Log.w("MainViewModel", errMsg)
+                                com.example.shift.data.ScanLogBuffer.log(errMsg)
                                 com.example.shift.data.ParsedStream(null, null, null, null, null, null)
                             }
                             
@@ -971,9 +978,12 @@ class MainViewModel(
                                 reloadSegmentCounts()
                             }
                         } catch (e: Exception) {
-                            android.util.Log.w("MainViewModel", "Scan error for activity ${activity.id}: ${e.message}")
+                            val errMsg = "Scan error for activity ${activity.id}: ${e.message}"
+                            android.util.Log.w("MainViewModel", errMsg)
+                            com.example.shift.data.ScanLogBuffer.log(errMsg)
                         }
                     }
+
 
 
                 }
@@ -1035,7 +1045,31 @@ class MainViewModel(
 
 
 
+    fun exportDiagnostics(context: Context, onComplete: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val courses = courseManager.coursesFlow.first()
+                val matches = matchCacheManager.getAllMatches()
+                val scannedCounts = mutableMapOf<String, Int>()
+                for (c in courses) {
+                    scannedCounts[c.id] = matchCacheManager.getScannedActivities(c.id).size
+                }
+                val file = com.example.shift.data.DiagnosticsExporter.generateAndExport(context, courses, matches, scannedCounts)
+                if (file != null) {
+                    com.example.shift.data.DiagnosticsExporter.shareDiagnosticsFile(context, file)
+                    onComplete(file.name)
+                } else {
+                    onComplete("Export failed")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete("Export error: ${e.message}")
+            }
+        }
+    }
+
     fun fetchPolylineIfNeeded(activityId: String) {
+
         if (_polylines.value.containsKey(activityId)) return
         if (activityId.startsWith("hc_")) {
             val act = _apiActivities.value.find { it.id == activityId }
