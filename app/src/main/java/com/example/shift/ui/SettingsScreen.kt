@@ -3,7 +3,11 @@ package com.example.shift.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsBike
+
+
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -308,6 +312,28 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("PURGE DELETED ROUTES & RESCAN ALL RIDES")
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = {
+                    viewModel.clearEntireCacheAndRescan {
+                        android.widget.Toast.makeText(
+                            context,
+                            "Cleared cache of every ride and segment! Rescanning...",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("CLEAR CACHE OF EVERY RIDE & SEGMENT")
+            }
+
 
             val orphanedCount by viewModel.orphanedCount.collectAsState()
             if (orphanedCount > 0) {

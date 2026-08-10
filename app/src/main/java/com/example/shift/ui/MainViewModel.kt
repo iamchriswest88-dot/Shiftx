@@ -1050,6 +1050,24 @@ class MainViewModel(
         }
     }
 
+    fun clearEntireCacheAndRescan(onComplete: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            try {
+                matchCacheManager.clearEntireCache()
+                _segmentCounts.value = emptyMap()
+                _orphanedCount.value = 0
+                com.example.shift.data.ScanLogBuffer.clear()
+                
+                scanUnscannedActivities(limit = 500)
+                onComplete?.invoke()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete?.invoke()
+            }
+        }
+    }
+
+
 
     fun reloadSegmentCounts() {
         viewModelScope.launch {

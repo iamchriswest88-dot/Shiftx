@@ -275,7 +275,20 @@ class MatchCacheManager(private val context: Context) {
             scannedCacheFile.delete()
         }
     }
+
+    suspend fun clearEntireCache() = withContext(Dispatchers.IO) {
+        if (cacheFile.exists()) {
+            cacheFile.delete()
+        }
+        if (scannedCacheFile.exists()) {
+            scannedCacheFile.delete()
+        }
+        val logMsg = "Cleared all matches and scanned activity caches."
+        android.util.Log.i("MatchCacheManager", logMsg)
+        ScanLogBuffer.log(logMsg)
+    }
 }
+
 
 
 

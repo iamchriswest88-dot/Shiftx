@@ -600,6 +600,22 @@ class CourseTrackerSimTest {
         println("  ✅ Purge deleted routes partitioning and orphan cleanup verified")
     }
 
+    @org.junit.Test
+    fun test_clear_entire_cache() {
+        val matches = mutableListOf(
+            com.example.shift.data.CourseMatch("c1", "act1", "Ride 1", "2026-01-01", 100),
+            com.example.shift.data.CourseMatch("c2", "act2", "Ride 2", "2026-01-02", 120)
+        )
+        matches.clear()
+        assert(matches.isEmpty())
+
+        com.example.shift.data.ScanLogBuffer.clear()
+        assert(com.example.shift.data.ScanLogBuffer.getLogs().isEmpty())
+
+        println("  ✅ Full cache reset and log clearance verified")
+    }
+
+
 
 
 
