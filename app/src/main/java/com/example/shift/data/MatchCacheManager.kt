@@ -39,14 +39,18 @@ class MatchCacheManager(private val context: Context) {
 
     suspend fun saveMatches(matches: List<CourseMatch>) = withContext(Dispatchers.IO) {
         val existing = getAllMatches().toMutableList()
-        // Remove old matches for the same courseId and activityId to avoid duplicates
         for (match in matches) {
-            existing.removeAll { it.courseId == match.courseId && it.activityId == match.activityId }
+            existing.removeAll { 
+                it.courseId == match.courseId && 
+                it.activityId == match.activityId && 
+                it.attemptIndex == match.attemptIndex 
+            }
             existing.add(match)
         }
         val content = json.encodeToString(existing)
         cacheFile.writeText(content)
     }
+
 
     suspend fun saveAllMatches(matches: List<CourseMatch>) = withContext(Dispatchers.IO) {
         val content = json.encodeToString(matches)

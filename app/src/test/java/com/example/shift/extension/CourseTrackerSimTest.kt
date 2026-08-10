@@ -486,6 +486,24 @@ class CourseTrackerSimTest {
         println("  ✅ Representative 5-ghost selection (fast, mid, slow) and deduplication verified")
     }
 
+    @org.junit.Test
+    fun test_multiple_laps_preserved() {
+        val lap1 = com.example.shift.data.CourseMatch("c1", "act1", "Ride 1", "2026-01-01", 120, attemptIndex = 0)
+        val lap2 = com.example.shift.data.CourseMatch("c1", "act1", "Ride 1", "2026-01-01", 115, attemptIndex = 1)
+        val lap3 = com.example.shift.data.CourseMatch("c1", "act1", "Ride 1", "2026-01-01", 118, attemptIndex = 2)
+
+        val matches = listOf(lap1, lap2, lap3)
+
+        val map = matches.associateBy { it.courseId + "_" + it.activityId + "_" + it.attemptIndex }
+        assert(map.size == 3)
+        assert(map["c1_act1_0"]?.timeSeconds == 120)
+        assert(map["c1_act1_1"]?.timeSeconds == 115)
+        assert(map["c1_act1_2"]?.timeSeconds == 118)
+
+        println("  ✅ Multiple laps from one activity preserved with attemptIndex")
+    }
+
+
 
     @org.junit.Test
     fun test_multighost_positions_at() {

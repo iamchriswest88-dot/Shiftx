@@ -264,6 +264,7 @@ object SegmentScanner {
                         if (sublist.isNotEmpty()) avgHr = sublist.average().toInt()
                     }
                     
+                    val currentAttemptIdx = matches.size
                     matches.add(
                         CourseMatch(
                             courseId = course.id,
@@ -274,9 +275,11 @@ object SegmentScanner {
                             avgWatts = avgWatts,
                             avgSpeed = avgVelocity,
                             avgHr = avgHr,
-                            timestamp = System.currentTimeMillis() + matches.size
+                            timestamp = System.currentTimeMillis() + matches.size,
+                            attemptIndex = currentAttemptIdx
                         )
                     )
+
                     lastEndIndex = e
                 }
             }

@@ -19,6 +19,8 @@ data class CourseMatch(
     val avgSpeed: Double? = null, // in m/s, will be converted in UI
     val avgHr: Int? = null,
     val timestamp: Long = System.currentTimeMillis(),
-    val curve: List<CurvePoint>? = null
+    val curve: List<CurvePoint>? = null,
+    val attemptIndex: Int = 0
 )
+
 
