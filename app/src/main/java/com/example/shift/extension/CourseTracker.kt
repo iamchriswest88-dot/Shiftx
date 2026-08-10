@@ -68,7 +68,10 @@ class CourseTracker(
         private const val OFF_COURSE_M = 40.0
 
         fun selectRepresentativeGhosts(matches: List<CourseMatch>): List<CourseMatch> {
-            val uniqueSorted = matches
+            if (matches.isEmpty()) return emptyList()
+            val nonEstimated = matches.filter { !it.estimatedTime }
+            val candidates = if (nonEstimated.isNotEmpty()) nonEstimated else matches
+            val uniqueSorted = candidates
                 .distinctBy { it.activityId }
                 .sortedBy { it.timeSeconds }
 
@@ -86,6 +89,7 @@ class CourseTracker(
             return indices.map { uniqueSorted[it] }
         }
     }
+
 
 
     private val courseManager = CourseManager(context)
@@ -139,12 +143,15 @@ class CourseTracker(
         coursePrs.clear()
         courses.forEach { course ->
             val matchesForCourse = allMatches.filter { it.courseId == course.id }
-            val prMatch = matchesForCourse.minByOrNull { it.timeSeconds }
+            val nonEstimated = matchesForCourse.filter { !it.estimatedTime }
+            val candidateMatches = if (nonEstimated.isNotEmpty()) nonEstimated else matchesForCourse
+            val prMatch = candidateMatches.minByOrNull { it.timeSeconds }
             if (prMatch != null) {
                 coursePrs[course.id] = PrRecord(prMatch.timeSeconds, prMatch.curve)
             }
         }
     }
+
 
     // ── Haversine distance between two points (meters) ──────────────────
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

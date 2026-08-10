@@ -246,21 +246,26 @@ fun CourseDetailScreen(
                                 // Center: Time and Date
                                 val mins = match.timeSeconds / 60
                                 val secs = match.timeSeconds % 60
+                                val timeText = "%02d:%02d".format(mins, secs)
+                                val displayTime = if (match.estimatedTime) "~$timeText" else timeText
+                                val timeColor = if (match.estimatedTime) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface
+
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "%02d:%02d".format(mins, secs),
+                                        text = displayTime,
                                         style = MaterialTheme.typography.titleMedium.copy(
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            color = timeColor
                                         )
                                     )
                                     Text(
-                                        text = match.date,
+                                        text = if (match.estimatedTime) "${match.date} (est.)" else match.date,
                                         style = MaterialTheme.typography.bodySmall.copy(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         ),
                                         maxLines = 1
                                     )
                                 }
+
                                 
                                 // Right: Power Output
                                 Text(

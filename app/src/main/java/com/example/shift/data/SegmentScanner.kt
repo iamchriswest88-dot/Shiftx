@@ -21,6 +21,11 @@ data class ParsedStream(
     val heartrate: List<Int>? = null
 )
 
+data class EffectiveStream(
+    val stream: ParsedStream,
+    val isEstimated: Boolean
+)
+
 object SegmentScanner {
 
     fun parseStream(rawJson: JsonElement): ParsedStream {
@@ -113,26 +118,26 @@ object SegmentScanner {
         return ParsedStream(pairs, timeData, distData, wattsData, velocityData, hrData)
     }
 
-    private fun getEffectiveStream(activity: Activity, rawStream: ParsedStream): ParsedStream {
+    private fun getEffectiveStream(activity: Activity, rawStream: ParsedStream): EffectiveStream {
         if (!rawStream.latlng.isNullOrEmpty() && !rawStream.time.isNullOrEmpty()) {
-            return rawStream
+            return EffectiveStream(rawStream, isEstimated = false)
         }
-        val poly = activity.map?.summary_polyline ?: return rawStream
+        val poly = activity.map?.summary_polyline ?: return EffectiveStream(rawStream, isEstimated = false)
         val points = PolylineUtils.decodePolyline(poly)
-        if (points.size < 2) return rawStream
+        if (points.size < 2) return EffectiveStream(rawStream, isEstimated = false)
 
         val totalTime = activity.elapsed_time ?: activity.moving_time ?: 0
-        if (totalTime <= 0) return rawStream
+        if (totalTime <= 0) return EffectiveStream(rawStream, isEstimated = false)
 
         val latlngs = points.map { listOf(it.first, it.second) }
         val times = points.indices.map { idx ->
             (idx.toDouble() / (points.size - 1) * totalTime).toInt()
         }
-        return ParsedStream(latlngs, times, null, null, null, null)
+        return EffectiveStream(ParsedStream(latlngs, times, null, null, null, null), isEstimated = true)
     }
 
     fun detectGates(course: Course, activity: Activity, rawStream: ParsedStream): List<CourseMatch> {
-        val stream = getEffectiveStream(activity, rawStream)
+        val (stream, isEstimated) = getEffectiveStream(activity, rawStream)
         val latlngs = stream.latlng ?: return emptyList()
         val times = stream.time ?: return emptyList()
         if (latlngs.isEmpty() || times.isEmpty()) return emptyList()
@@ -276,10 +281,10 @@ object SegmentScanner {
                             avgSpeed = avgVelocity,
                             avgHr = avgHr,
                             timestamp = System.currentTimeMillis() + matches.size,
-                            attemptIndex = currentAttemptIdx
+                            attemptIndex = currentAttemptIdx,
+                            estimatedTime = isEstimated
                         )
                     )
-
                     lastEndIndex = e
                 }
             }
@@ -289,6 +294,7 @@ object SegmentScanner {
     }
 
     private fun validateSegmentCoverage(
+
         latlngs: List<List<Double>>,
         s: Int,
         e: Int,

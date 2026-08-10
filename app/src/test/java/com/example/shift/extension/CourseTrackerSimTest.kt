@@ -503,6 +503,27 @@ class CourseTrackerSimTest {
         println("  ✅ Multiple laps from one activity preserved with attemptIndex")
     }
 
+    @org.junit.Test
+    fun test_estimated_time_pr_exclusion() {
+        val estimatedFast = com.example.shift.data.CourseMatch("c1", "act1", "Estimated Ride", "2026-01-01", 100, estimatedTime = true)
+        val realSlow = com.example.shift.data.CourseMatch("c1", "act2", "Real Ride", "2026-01-02", 150, estimatedTime = false)
+
+        val matches = listOf(estimatedFast, realSlow)
+        val ghosts = CourseTracker.selectRepresentativeGhosts(matches)
+
+        assert(ghosts.size == 1)
+        assert(ghosts[0].timeSeconds == 150)
+        assert(!ghosts[0].estimatedTime)
+
+        val estimatedOnly = listOf(estimatedFast)
+        val fallbackGhosts = CourseTracker.selectRepresentativeGhosts(estimatedOnly)
+        assert(fallbackGhosts.size == 1)
+        assert(fallbackGhosts[0].estimatedTime)
+
+        println("  ✅ Estimated time matches excluded from PR / ghost selection")
+    }
+
+
 
 
     @org.junit.Test

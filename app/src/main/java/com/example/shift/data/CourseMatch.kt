@@ -20,7 +20,9 @@ data class CourseMatch(
     val avgHr: Int? = null,
     val timestamp: Long = System.currentTimeMillis(),
     val curve: List<CurvePoint>? = null,
-    val attemptIndex: Int = 0
+    val attemptIndex: Int = 0,
+    val estimatedTime: Boolean = false
 )
+
 
 
