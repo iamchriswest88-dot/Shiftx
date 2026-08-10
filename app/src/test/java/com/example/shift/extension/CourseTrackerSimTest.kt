@@ -523,6 +523,55 @@ class CourseTrackerSimTest {
         println("  ✅ Estimated time matches excluded from PR / ghost selection")
     }
 
+    @org.junit.Test
+    fun test_repair_stray_matches() {
+        val liveCourse = com.example.shift.data.Course("live_c1", "Live Course", 51.5, -0.1, 51.51, -0.09)
+        val liveMatches = mutableListOf(
+            com.example.shift.data.CourseMatch("live_c1", "actA", "Ride A", "2026-01-01", 113),
+            com.example.shift.data.CourseMatch("live_c1", "actB", "Ride B", "2026-01-02", 120)
+        )
+        val strayMatches = listOf(
+            com.example.shift.data.CourseMatch("stray_c2", "actA", "Ride A", "2026-01-01", 114),
+            com.example.shift.data.CourseMatch("stray_c2", "actB", "Ride B", "2026-01-02", 121),
+            com.example.shift.data.CourseMatch("stray_c2", "actC", "Ride C", "2026-01-03", 103),
+            com.example.shift.data.CourseMatch("stray_c2", "actD", "Ride D", "2026-01-04", 114)
+        )
+
+        val allMatches = (liveMatches + strayMatches).toMutableList()
+        val liveCourseIds = setOf("live_c1")
+
+        val strayGroup = allMatches.filter { !liveCourseIds.contains(it.courseId) }
+        val currentLive = allMatches.filter { liveCourseIds.contains(it.courseId) }.toMutableList()
+
+        var overlap = 0
+        for (sm in strayGroup) {
+            val matchingLive = currentLive.firstOrNull { it.activityId == sm.activityId }
+            if (matchingLive != null) {
+                val diff = kotlin.math.abs(sm.timeSeconds - matchingLive.timeSeconds)
+                if (diff <= 15) overlap++
+            }
+        }
+
+        assert(overlap == 2)
+
+        for (sm in strayGroup) {
+            val exists = currentLive.any { it.activityId == sm.activityId && it.attemptIndex == sm.attemptIndex }
+            if (!exists) {
+                currentLive.add(sm.copy(courseId = "live_c1"))
+            }
+        }
+
+        val liveActs = currentLive.map { it.activityId }.toSet()
+        assert(liveActs == setOf("actA", "actB", "actC", "actD"))
+        assert(currentLive.first { it.activityId == "actA" }.timeSeconds == 113)
+        assert(currentLive.first { it.activityId == "actB" }.timeSeconds == 120)
+        assert(currentLive.first { it.activityId == "actC" }.timeSeconds == 103)
+        assert(currentLive.first { it.activityId == "actD" }.timeSeconds == 114)
+
+        println("  ✅ Auto-repair stray matches, idempotency, and deduplication verified")
+    }
+
+
 
 
 

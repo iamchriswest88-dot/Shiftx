@@ -86,6 +86,15 @@ class CourseDetailViewModel(
         }
     }
 
+    fun deleteMatch(match: CourseMatch) {
+        viewModelScope.launch {
+            matchCacheManager.deleteSingleMatch(match.courseId, match.activityId, match.attemptIndex)
+            loadCachedMatches()
+            mainViewModel.reloadSegmentCounts()
+        }
+    }
+
+
     fun scanActivities(forceRescan: Boolean = false) {
         if (_isScanning.value) return
         val currentCourse = _course.value ?: return

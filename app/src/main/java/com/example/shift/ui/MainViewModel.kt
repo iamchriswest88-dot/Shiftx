@@ -1019,6 +1019,7 @@ class MainViewModel(
         viewModelScope.launch {
             try {
                 val liveCourses = courseManager.coursesFlow.first()
+                matchCacheManager.repairStrayMatches(liveCourses)
                 val liveCourseIds = liveCourses.map { it.id }.toSet()
                 val allMatches = matchCacheManager.getAllMatches()
                 val validMatches = allMatches.filter { liveCourseIds.contains(it.courseId) }
@@ -1030,6 +1031,7 @@ class MainViewModel(
             }
         }
     }
+
 
 
 

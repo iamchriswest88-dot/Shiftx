@@ -4,6 +4,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -29,7 +32,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun CourseDetailScreen(
     viewModel: CourseDetailViewModel,
@@ -38,7 +41,39 @@ fun CourseDetailScreen(
     onMatchClick: (String) -> Unit
 ) {
     val course by viewModel.course.collectAsState()
+    var matchToDelete by remember { mutableStateOf<com.example.shift.data.CourseMatch?>(null) }
+
+
+    if (matchToDelete != null) {
+        val m = matchToDelete!!
+        val mins = m.timeSeconds / 60
+        val secs = m.timeSeconds % 60
+        val timeFormatted = "%02d:%02d".format(mins, secs)
+        AlertDialog(
+            onDismissRequest = { matchToDelete = null },
+            title = { Text("Delete Match Attempt") },
+            text = { Text("Are you sure you want to remove this attempt (${m.date} - $timeFormatted) from the leaderboard?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteMatch(m)
+                        matchToDelete = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { matchToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     val matches by viewModel.filteredMatches.collectAsState()
+
     val availableYears by viewModel.availableYears.collectAsState()
     val selectedYear by viewModel.selectedYear.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
@@ -225,10 +260,14 @@ fun CourseDetailScreen(
                         ElevatedCard(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onMatchClick(match.activityId) },
+                                .combinedClickable(
+                                    onClick = { onMatchClick(match.activityId) },
+                                    onLongClick = { matchToDelete = match }
+                                ),
                             colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                             shape = RoundedCornerShape(12.dp)
                         ) {
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()

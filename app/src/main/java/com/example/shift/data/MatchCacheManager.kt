@@ -137,6 +137,94 @@ class MatchCacheManager(private val context: Context) {
         }
     }
 
+    suspend fun deleteSingleMatch(courseId: String, activityId: String, attemptIndex: Int) = withContext(Dispatchers.IO) {
+        if (cacheFile.exists()) {
+            try {
+                val content = cacheFile.readText()
+                if (content.isNotBlank()) {
+                    val allMatches = json.decodeFromString<List<CourseMatch>>(content)
+                    val filtered = allMatches.filterNot { 
+                        it.courseId == courseId && it.activityId == activityId && it.attemptIndex == attemptIndex 
+                    }
+                    cacheFile.writeText(json.encodeToString(filtered))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    suspend fun repairStrayMatches(liveCourses: List<Course>): Int = withContext(Dispatchers.IO) {
+        if (liveCourses.isEmpty()) return@withContext 0
+        val liveCourseIds = liveCourses.map { it.id }.toSet()
+        val allMatches = getAllMatches().toMutableList()
+        val (liveMatches, strayMatches) = allMatches.partition { liveCourseIds.contains(it.courseId) }
+        
+        if (strayMatches.isEmpty()) return@withContext 0
+
+        val straysByCourse = strayMatches.groupBy { it.courseId }
+        val liveMatchesByCourse = liveMatches.groupBy { it.courseId }.mapValues { it.value.toMutableList() }.toMutableMap()
+        liveCourses.forEach { c -> if (!liveMatchesByCourse.containsKey(c.id)) liveMatchesByCourse[c.id] = mutableListOf() }
+
+        var reHomedCount = 0
+        val reHomedStrayCourseIds = mutableSetOf<String>()
+
+        for ((strayCourseId, strayGroup) in straysByCourse) {
+            var bestLiveCourseId: String? = null
+            var maxOverlap = 0
+
+            for (liveCourse in liveCourses) {
+                val liveList = liveMatchesByCourse[liveCourse.id] ?: emptyList()
+                var overlap = 0
+                for (strayMatch in strayGroup) {
+                    val matchingLive = liveList.firstOrNull { it.activityId == strayMatch.activityId }
+                    if (matchingLive != null) {
+                        val absDiff = kotlin.math.abs(strayMatch.timeSeconds - matchingLive.timeSeconds)
+                        val maxTime = kotlin.math.max(strayMatch.timeSeconds, matchingLive.timeSeconds)
+                        val pctDiff = if (maxTime > 0) absDiff.toDouble() / maxTime else 0.0
+                        if (absDiff <= 15 || pctDiff <= 0.10) {
+                            overlap++
+                        }
+                    }
+                }
+                if (overlap >= 2 && overlap > maxOverlap) {
+                    maxOverlap = overlap
+                    bestLiveCourseId = liveCourse.id
+                }
+            }
+
+            if (bestLiveCourseId != null) {
+                reHomedStrayCourseIds.add(strayCourseId)
+                val targetLiveList = liveMatchesByCourse[bestLiveCourseId] ?: mutableListOf()
+                for (strayMatch in strayGroup) {
+                    val alreadyExists = targetLiveList.any { 
+                        it.activityId == strayMatch.activityId && it.attemptIndex == strayMatch.attemptIndex 
+                    }
+                    if (!alreadyExists) {
+                        targetLiveList.add(strayMatch.copy(courseId = bestLiveCourseId))
+                        reHomedCount++
+                    }
+                }
+                liveMatchesByCourse[bestLiveCourseId] = targetLiveList
+            }
+        }
+
+        if (reHomedCount > 0) {
+            val finalMatches = mutableListOf<CourseMatch>()
+            for (strayGroup in straysByCourse) {
+                val sId = strayGroup.key
+                if (!reHomedStrayCourseIds.contains(sId)) {
+                    finalMatches.addAll(strayGroup.value)
+                }
+            }
+            liveMatchesByCourse.values.forEach { finalMatches.addAll(it) }
+            saveAllMatches(finalMatches)
+            android.util.Log.i("MatchCacheManager", "Re-homed $reHomedCount matches from ${reHomedStrayCourseIds.size} stray course ids")
+        }
+
+        reHomedCount
+    }
+
     suspend fun getOrphanedMatches(liveCourseIds: Set<String>): List<CourseMatch> = withContext(Dispatchers.IO) {
         val all = getAllMatches()
         all.filter { !liveCourseIds.contains(it.courseId) }
@@ -149,5 +237,7 @@ class MatchCacheManager(private val context: Context) {
         orphaned.size
     }
 }
+
+
 
 

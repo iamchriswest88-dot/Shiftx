@@ -106,12 +106,16 @@ class CloudSyncManager(private val context: Context) {
                 val cloudMatches = api.pullMatches()
                 if (cloudMatches != null) {
                     val localMatches = matchManager.getAllMatches()
-                    val localMap = localMatches.associateBy { it.courseId + "_" + it.timeSeconds }.toMutableMap()
-                    cloudMatches.forEach { localMap[it.courseId + "_" + it.timeSeconds] = it }
+                    val localMap = localMatches.associateBy { "${it.courseId}_${it.activityId}_${it.attemptIndex}" }.toMutableMap()
+                    cloudMatches.forEach { localMap["${it.courseId}_${it.activityId}_${it.attemptIndex}"] = it }
                     matchManager.saveAllMatches(localMap.values.toList())
                 }
                 
+                val updatedCourses = courseManager.coursesFlow.first()
+                matchManager.repairStrayMatches(updatedCourses)
+                
                 Log.d("CloudSync", "Pull complete.")
+
             } catch (e: Exception) {
                 Log.e("CloudSync", "Error pulling from cloud", e)
             }
