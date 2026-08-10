@@ -23,9 +23,11 @@ class ShiftExtension : KarooExtension("shift-extension", "1.0") {
         listOf(
             LiveDeltaDataType(extension, courseTracker),
             DistanceRemainingDataType(extension, courseTracker),
-            SegmentPageDataType(extension, courseTracker)
+            SegmentPageDataType(extension, courseTracker),
+            RaceViewDataType(extension, courseTracker)
         )
     }
+
 
     override fun onCreate() {
         super.onCreate()

@@ -25,5 +25,12 @@
         graphical="true"
         icon="@drawable/ic_extension"
         typeId="segment-page" />
+    <DataType
+        description="Race view: full-screen map vs your top 5 times"
+        displayName="Race View"
+        graphical="true"
+        icon="@drawable/ic_extension"
+        typeId="race-view" />
 </ExtensionInfo>
+
 
