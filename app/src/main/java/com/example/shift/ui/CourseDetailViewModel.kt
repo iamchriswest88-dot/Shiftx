@@ -83,8 +83,19 @@ class CourseDetailViewModel(
         viewModelScope.launch {
             val cached = matchCacheManager.getMatches(courseId)
             _matches.value = cached.sortedBy { it.timeSeconds }
+            
+            val currentCourse = _course.value
+            if (currentCourse != null && !_isScanning.value) {
+                val scannedIds = matchCacheManager.getScannedActivities(courseId)
+                val allActivities = mainViewModel.activities.value
+                val unscanned = allActivities.filter { !scannedIds.contains(it.id) }
+                if (unscanned.isNotEmpty() || cached.isEmpty()) {
+                    scanActivities(forceRescan = false)
+                }
+            }
         }
     }
+
 
     fun deleteMatch(match: CourseMatch) {
         viewModelScope.launch {

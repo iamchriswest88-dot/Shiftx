@@ -67,8 +67,10 @@ fun MapScreen(
     mainViewModel: MainViewModel,
     onBack: () -> Unit,
     isCreationMode: Boolean = false,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    onCourseClick: ((String) -> Unit)? = null
 ) {
+
     LaunchedEffect(Unit) {
         if (isCreationMode && courseId == null) {
             viewModel.resetGates()
@@ -441,7 +443,10 @@ fun MapScreen(
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 4.dp),
+                                            .clickable(enabled = onCourseClick != null) {
+                                                onCourseClick?.invoke(matchInfo.course.id)
+                                            }
+                                            .padding(vertical = 8.dp, horizontal = 4.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -464,12 +469,21 @@ fun MapScreen(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                         }
-                                        Text(
-                                            text = timeLabel,
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = if (isPr) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = timeLabel,
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = if (isPr) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "›",
+                                                style = MaterialTheme.typography.titleLarge,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                            )
+                                        }
                                     }
+
                                 }
                             }
                         }

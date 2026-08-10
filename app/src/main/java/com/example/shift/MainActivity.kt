@@ -330,8 +330,10 @@ class MainActivity : ComponentActivity() {
                             onDelete = {
                                 mainViewModel.deleteActivity(activityId)
                                 navController.popBackStack()
-                            }
+                            },
+                            onCourseClick = { cId -> navController.navigate("course_detail/$cId") }
                         )
+
                     }
                     composable("create_course/{activityId}") { backStackEntry ->
                         val activityId = backStackEntry.arguments?.getString("activityId") ?: return@composable
