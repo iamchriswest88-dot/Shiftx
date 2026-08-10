@@ -983,6 +983,38 @@ class MainViewModel(
         }
     }
     
+    private val _orphanedCount = MutableStateFlow(0)
+    val orphanedCount: StateFlow<Int> = _orphanedCount.asStateFlow()
+
+
+    fun checkForOrphanedMatches() {
+        viewModelScope.launch {
+            try {
+                val liveCourses = courseManager.coursesFlow.first()
+                val liveCourseIds = liveCourses.map { it.id }.toSet()
+                val orphaned = matchCacheManager.getOrphanedMatches(liveCourseIds)
+                _orphanedCount.value = orphaned.size
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun repairOrphanedMatches(onComplete: ((Int) -> Unit)? = null) {
+        viewModelScope.launch {
+            try {
+                val liveCourses = courseManager.coursesFlow.first()
+                val liveCourseIds = liveCourses.map { it.id }.toSet()
+                val deletedCount = matchCacheManager.deleteOrphanedMatches(liveCourseIds)
+                _orphanedCount.value = 0
+                reloadSegmentCounts()
+                onComplete?.invoke(deletedCount)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     fun reloadSegmentCounts() {
         viewModelScope.launch {
             try {
@@ -992,11 +1024,13 @@ class MainViewModel(
                 val validMatches = allMatches.filter { liveCourseIds.contains(it.courseId) }
                 val counts = validMatches.groupingBy { it.activityId }.eachCount()
                 _segmentCounts.value = counts
+                checkForOrphanedMatches()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
     }
+
 
 
     fun fetchPolylineIfNeeded(activityId: String) {

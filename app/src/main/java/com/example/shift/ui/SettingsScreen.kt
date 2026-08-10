@@ -284,7 +284,33 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 Text("PUSH RUNS TO INTERVALS.ICU", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            val orphanedCount by viewModel.orphanedCount.collectAsState()
+            if (orphanedCount > 0) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("Maintenance", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("$orphanedCount orphaned attempt(s) from deleted segments", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                viewModel.repairOrphanedMatches { deleted ->
+                                    android.widget.Toast.makeText(context, "Cleaned up $deleted orphaned attempt(s)", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("Clean Up Orphaned Attempts")
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }

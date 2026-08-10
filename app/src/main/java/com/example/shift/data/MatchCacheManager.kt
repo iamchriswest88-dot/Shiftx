@@ -136,5 +136,18 @@ class MatchCacheManager(private val context: Context) {
             }
         }
     }
+
+    suspend fun getOrphanedMatches(liveCourseIds: Set<String>): List<CourseMatch> = withContext(Dispatchers.IO) {
+        val all = getAllMatches()
+        all.filter { !liveCourseIds.contains(it.courseId) }
+    }
+
+    suspend fun deleteOrphanedMatches(liveCourseIds: Set<String>): Int = withContext(Dispatchers.IO) {
+        val all = getAllMatches()
+        val (live, orphaned) = all.partition { liveCourseIds.contains(it.courseId) }
+        saveAllMatches(live)
+        orphaned.size
+    }
 }
+
 
