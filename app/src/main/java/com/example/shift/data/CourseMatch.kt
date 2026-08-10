@@ -1,3 +1,5 @@
+package com.example.shift.data
+
 import kotlinx.serialization.Serializable
 
 @Serializable

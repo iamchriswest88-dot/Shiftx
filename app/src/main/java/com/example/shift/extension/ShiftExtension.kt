@@ -17,9 +17,11 @@ class ShiftExtension : KarooExtension("shift-extension", "1.0") {
     override val types by lazy {
         listOf(
             LiveDeltaDataType(extension, courseTracker),
-            DistanceRemainingDataType(extension, courseTracker)
+            DistanceRemainingDataType(extension, courseTracker),
+            SegmentPageDataType(extension, courseTracker)
         )
     }
+
 
     override fun onCreate() {
         super.onCreate()

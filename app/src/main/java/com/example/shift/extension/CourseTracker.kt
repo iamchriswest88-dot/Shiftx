@@ -40,8 +40,10 @@ data class TrackingState(
     val ghostLatLng: Pair<Double, Double>? = null,
     val ghostBearing: Float? = null,
     val ghostIsLinearFallback: Boolean = false,
+    val activePolyline: List<Pair<Double, Double>>? = null,
     val finished: FinishResult? = null
 )
+
 
 data class PrRecord(
     val timeSeconds: Int,
@@ -291,8 +293,10 @@ class CourseTracker(
                 ghostLatLng = ghostPos.latLng,
                 ghostBearing = ghostPos.bearing,
                 ghostIsLinearFallback = ghostPos.isLinearFallback,
+                activePolyline = decodedPolyline,
                 finished = null
             )
+
         }
     }
 
