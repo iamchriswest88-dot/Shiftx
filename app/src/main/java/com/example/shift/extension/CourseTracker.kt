@@ -22,10 +22,25 @@ import kotlin.math.*
 
 import com.example.shift.data.CurvePoint
 
+data class FinishResult(
+    val timeSeconds: Int,
+    val prTimeSeconds: Int?,
+    val isNewPr: Boolean
+)
+
 data class TrackingState(
     val activeCourseId: String? = null,
+    val courseName: String? = null,
     val distanceRemainingMeters: Double? = null,
-    val timeDeltaSeconds: Double? = null
+    val timeDeltaSeconds: Double? = null,
+    val elapsedSeconds: Double? = null,
+    val prTimeSeconds: Int? = null,
+    val progressRatio: Double? = null,
+    val riderLatLng: Pair<Double, Double>? = null,
+    val ghostLatLng: Pair<Double, Double>? = null,
+    val ghostBearing: Float? = null,
+    val ghostIsLinearFallback: Boolean = false,
+    val finished: FinishResult? = null
 )
 
 data class PrRecord(
@@ -59,6 +74,7 @@ class CourseTracker(
     private var activeCourse: Course? = null
     private var activeStartTime: Long = 0L
     private var decodedPolyline: List<Pair<Double, Double>> = emptyList()
+    private var cumPolylineDistances: List<Double> = emptyList()
     private var totalPolylineDist: Double = 0.0
 
     private val currentCurve = mutableListOf<CurvePoint>()
@@ -114,13 +130,17 @@ class CourseTracker(
         return R * 2.0 * atan2(sqrt(a), sqrt(1 - a))
     }
 
-    // ── Total length of a decoded polyline ──────────────────────────────
-    private fun polylineLength(pts: List<Pair<Double, Double>>): Double {
+    // ── Total length and cumulative segment distances ────────────────────
+    private fun computeCumulativeDistances(pts: List<Pair<Double, Double>>): List<Double> {
+        if (pts.isEmpty()) return emptyList()
+        val list = ArrayList<Double>(pts.size)
+        list.add(0.0)
         var total = 0.0
         for (i in 0 until pts.size - 1) {
             total += haversineMeters(pts[i].first, pts[i].second, pts[i + 1].first, pts[i + 1].second)
+            list.add(total)
         }
-        return total
+        return list
     }
 
     // ── Distance along polyline up to (and including partial projection onto) segment at closestIndex
@@ -167,7 +187,8 @@ class CourseTracker(
                     activeCourse = c
                     activeStartTime = System.currentTimeMillis()
                     decodedPolyline = PolylineUtils.decodePolyline(c.encodedPolyline)
-                    totalPolylineDist = polylineLength(decodedPolyline)
+                    cumPolylineDistances = computeCumulativeDistances(decodedPolyline)
+                    totalPolylineDist = cumPolylineDistances.lastOrNull() ?: 0.0
                     currentCurve.clear()
                     currentCurve.add(CurvePoint(0.0, 0.0))
                     lastSampleTimeMs = activeStartTime
@@ -206,48 +227,75 @@ class CourseTracker(
             val distanceRemaining = (totalPolylineDist - distanceCovered).coerceAtLeast(0.0)
             val progressRatio = if (totalPolylineDist > 0) (distanceCovered / totalPolylineDist).coerceIn(0.0, 1.0) else 0.0
             val nowMs = System.currentTimeMillis()
-            val elapsedSeconds = ((nowMs - activeStartTime) / 1000.0).toInt()
+            val elapsedSec = (nowMs - activeStartTime) / 1000.0
+            val elapsedSecondsInt = elapsedSec.toInt()
 
             // 4. Sample ride curve (at most 1 sample per ~2s or ~20m progress; monotonic)
             if (distanceCovered >= lastSampleDist) {
                 val timeSinceLastMs = nowMs - lastSampleTimeMs
                 val distSinceLast = distanceCovered - lastSampleDist
                 if (timeSinceLastMs >= 2000 || distSinceLast >= 20.0) {
-                    val elapsedSec = (nowMs - activeStartTime) / 1000.0
                     currentCurve.add(CurvePoint(distanceCovered, elapsedSec))
                     lastSampleTimeMs = nowMs
                     lastSampleDist = distanceCovered
                 }
             }
 
+            val prRecord = coursePrs[course.id]
+
             // 5. Finish check: proximity to END point + meaningful progress (>80%) + min 10s elapsed
             val distToEnd = haversineMeters(lat, lng, course.endLat, course.endLng)
-            if (distToEnd < END_RADIUS_M && progressRatio > 0.8 && elapsedSeconds >= 10) {
-                Log.i(TAG, "Finished segment '${course.name}' in ${elapsedSeconds}s")
+            if (distToEnd < END_RADIUS_M && progressRatio > 0.8 && elapsedSecondsInt >= 10) {
+                Log.i(TAG, "Finished segment '${course.name}' in ${elapsedSecondsInt}s")
                 val finalDist = maxOf(totalPolylineDist, lastSampleDist)
-                currentCurve.add(CurvePoint(finalDist, elapsedSeconds.toDouble()))
-                recordAttempt(course, elapsedSeconds, currentCurve.toList())
+                currentCurve.add(CurvePoint(finalDist, elapsedSec))
+                recordAttempt(course, elapsedSecondsInt, currentCurve.toList())
+                
+                val isNewPr = prRecord == null || elapsedSecondsInt < prRecord.timeSeconds
+                val finishResult = FinishResult(
+                    timeSeconds = elapsedSecondsInt,
+                    prTimeSeconds = prRecord?.timeSeconds,
+                    isNewPr = isNewPr
+                )
                 activeCourse = null
-                _state.value = TrackingState()
+                _state.value = TrackingState(
+                    activeCourseId = course.id,
+                    courseName = course.name,
+                    finished = finishResult
+                )
                 return
             }
 
-            // 6. Time delta against PR
-            var timeDelta: Double? = null
-            val prRecord = coursePrs[course.id]
-            if (prRecord != null && totalPolylineDist > 0) {
-                val elapsedTime = (nowMs - activeStartTime) / 1000.0
-                val expectedTime = prRecord.timeSeconds * progressRatio
-                timeDelta = elapsedTime - expectedTime
-            }
+            // 6. Time delta against PR using curve-aware expected time
+            val expectedTime = GhostEngine.calculateExpectedTime(prRecord, distanceCovered, totalPolylineDist)
+            val timeDelta = if (expectedTime != null) elapsedSec - expectedTime else null
+
+            // 7. Ghost position and bearing
+            val ghostPos = GhostEngine.calculateGhostPosition(
+                prRecord,
+                elapsedSec,
+                decodedPolyline,
+                cumPolylineDistances,
+                totalPolylineDist
+            )
 
             _state.value = TrackingState(
                 activeCourseId = course.id,
+                courseName = course.name,
                 distanceRemainingMeters = distanceRemaining,
-                timeDeltaSeconds = timeDelta
+                timeDeltaSeconds = timeDelta,
+                elapsedSeconds = elapsedSec,
+                prTimeSeconds = prRecord?.timeSeconds,
+                progressRatio = progressRatio,
+                riderLatLng = Pair(lat, lng),
+                ghostLatLng = ghostPos.latLng,
+                ghostBearing = ghostPos.bearing,
+                ghostIsLinearFallback = ghostPos.isLinearFallback,
+                finished = null
             )
         }
     }
+
 
     private fun recordAttempt(course: Course, elapsedSeconds: Int, curve: List<CurvePoint>? = null) {
         val match = CourseMatch(

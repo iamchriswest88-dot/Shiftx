@@ -102,11 +102,6 @@ class CourseTrackerSimTest {
             }
         }
 
-        // End detection
-        if (distToEnd < END_RADIUS_M) {
-            return SimResult(TrackerState.FINISHED, 0.0, totalDist, minDist)
-        }
-
         // Off-course
         if (minDist > OFF_COURSE_M) {
             return SimResult(TrackerState.OFF_COURSE, closestDistToPolyline = minDist)
@@ -114,9 +109,16 @@ class CourseTrackerSimTest {
 
         val covered = distanceAlongPolyline(course.polyline, closestIndex, lat, lng)
         val remaining = (totalDist - covered).coerceAtLeast(0.0)
+        val progressRatio = if (totalDist > 0) (covered / totalDist).coerceIn(0.0, 1.0) else 0.0
+
+        // End detection with progressRatio > 0.8 finish guard
+        if (distToEnd < END_RADIUS_M && progressRatio > 0.8) {
+            return SimResult(TrackerState.FINISHED, 0.0, totalDist, minDist)
+        }
 
         return SimResult(TrackerState.ACTIVE, remaining, covered, minDist)
     }
+
 
     // ── Interpolate between two points ──────────────────────────────────
     private fun interpolate(p1: Pair<Double, Double>, p2: Pair<Double, Double>, t: Double): Pair<Double, Double> {
@@ -401,4 +403,59 @@ class CourseTrackerSimTest {
         println("  ALL SIMULATION CHECKS PASSED ✅")
         println("  ══════════════════════════════════════════\n")
     }
+
+    @org.junit.Test
+    fun test_ghost_engine_interpolation() {
+        val polyline = listOf(
+            Pair(51.5000, -0.1000),
+            Pair(51.5010, -0.0980),
+            Pair(51.5020, -0.0960)
+        )
+        val cumDistances = listOf(0.0, 200.0, 400.0)
+        val totalDist = 400.0
+
+        val curve = listOf(
+            com.example.shift.data.CurvePoint(0.0, 0.0),
+            com.example.shift.data.CurvePoint(200.0, 30.0),
+            com.example.shift.data.CurvePoint(400.0, 60.0)
+        )
+        val prRecord = PrRecord(60, curve)
+
+        // At t=15s, ghost should be at 100m
+        val pos = GhostEngine.calculateGhostPosition(prRecord, 15.0, polyline, cumDistances, totalDist)
+        assert(pos.latLng != null)
+        assert(!pos.isLinearFallback)
+        assert(abs(pos.ghostDist - 100.0) < 0.1)
+
+        // Expected time at 100m should be 15s
+        val expTime = GhostEngine.calculateExpectedTime(prRecord, 100.0, totalDist)
+        assert(expTime != null && abs(expTime - 15.0) < 0.1)
+
+        println("  ✅ GhostEngine curve interpolation accurate")
+    }
+
+    @org.junit.Test
+    fun test_loop_false_finish_prevention() {
+        // A loop segment where start and end are 10m apart
+        val polyline = listOf(
+            Pair(51.5000, -0.1000), // Start
+            Pair(51.5050, -0.1000), // Far point 1
+            Pair(51.5050, -0.0950), // Far point 2
+            Pair(51.5001, -0.1000)  // End (10m from start)
+        )
+        val course = SimCourse(
+            name = "Loop Segment",
+            startLat = 51.5000, startLng = -0.1000,
+            endLat = 51.5001, endLng = -0.1000,
+            polyline = polyline
+        )
+        val totalDist = polylineLength(polyline)
+
+        // Rider is at start gate, which is also 10m from end gate
+        // At start (covered = 0m, progressRatio = 0.0), it MUST NOT trigger finish!
+        val resultAtStart = simulateUpdate(course, totalDist, 51.5000, -0.1000)
+        assert(resultAtStart.state != TrackerState.FINISHED) { "False finish detected on loop start!" }
+        println("  ✅ Loop segment false finish prevented at start")
+    }
 }
+
