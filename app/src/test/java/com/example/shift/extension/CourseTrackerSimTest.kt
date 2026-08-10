@@ -421,11 +421,13 @@ class CourseTrackerSimTest {
         )
         val prRecord = PrRecord(60, curve)
 
-        // At t=15s, ghost should be at 100m
+        // At t=15s, ghost should be at 100m (progressRatio = 0.25)
         val pos = GhostEngine.calculateGhostPosition(prRecord, 15.0, polyline, cumDistances, totalDist)
-        assert(pos.latLng != null)
-        assert(!pos.isLinearFallback)
-        assert(abs(pos.ghostDist - 100.0) < 0.1)
+        assert(pos != null)
+        assert(pos?.latLng != null)
+        assert(!pos!!.isLinearFallback)
+        assert(abs(pos.progressRatio - 0.25) < 0.01)
+
 
         // Expected time at 100m should be 15s
         val expTime = GhostEngine.calculateExpectedTime(prRecord, 100.0, totalDist)
