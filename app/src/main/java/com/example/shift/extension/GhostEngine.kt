@@ -1,8 +1,8 @@
 package com.example.shift.extension
 
 import com.example.shift.data.CurvePoint
-import com.example.shift.data.PrRecord
 import kotlin.math.*
+
 
 data class GhostPosition(
     val latLng: Pair<Double, Double>?,

@@ -293,8 +293,9 @@ class SegmentPageDataType(
 
         // Ghost tick mark
         val ghostLat = state.ghostLatLng
-        if (ghostLat != null && polyline.isNotEmpty()) {
+        if (ghostLat != null && !polyline.isNullOrEmpty()) {
             val ghostRatio = calculateGhostProgressRatio(state)
+
             val ghostX = width * ghostRatio.toFloat()
             paint.color = Color.parseColor("#FF8C00") // Orange
             paint.strokeWidth = 4f
