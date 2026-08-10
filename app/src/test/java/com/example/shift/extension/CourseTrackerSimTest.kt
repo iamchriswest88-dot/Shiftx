@@ -472,24 +472,19 @@ class CourseTrackerSimTest {
             com.example.shift.data.CourseMatch("c1", "act6", "Ride 6", "2026-01-07", 290)
         )
 
-        val top5 = matches
-            .distinctBy { it.activityId }
-            .sortedBy { it.timeSeconds }
-            .take(5)
+        val selected = CourseTracker.selectRepresentativeGhosts(matches)
 
-        assert(top5.size == 5)
-        assert(top5[0].timeSeconds == 250)
-        assert(top5[1].timeSeconds == 260)
-        assert(top5[2].timeSeconds == 280)
-        assert(top5[3].timeSeconds == 290)
-        assert(top5[4].timeSeconds == 300)
+        assert(selected.size == 5)
+        assert(selected[0].timeSeconds == 240) // PR / fastest
+        assert(selected[4].timeSeconds == 320) // Slowest
 
-        val specs = top5.mapIndexed { idx, m -> GhostSpec(idx + 1, m.timeSeconds, m.curve) }
-        assert(specs[0].rank == 1 && specs[0].timeSeconds == 250)
-        assert(specs[4].rank == 5 && specs[4].timeSeconds == 300)
+        val specs = selected.mapIndexed { idx, m -> GhostSpec(idx + 1, m.timeSeconds, m.curve) }
+        assert(specs[0].rank == 1 && specs[0].timeSeconds == 240)
+        assert(specs[4].rank == 5 && specs[4].timeSeconds == 320)
 
-        println("  ✅ Top 5 ghost selection, ordering, and deduplication verified")
+        println("  ✅ Representative 5-ghost selection (fast, mid, slow) and deduplication verified")
     }
+
 
     @org.junit.Test
     fun test_multighost_positions_at() {

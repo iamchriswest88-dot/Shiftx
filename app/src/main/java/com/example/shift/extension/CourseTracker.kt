@@ -204,12 +204,9 @@ class CourseTracker(
                     lastSampleDist = 0.0
 
                     val matchesForCourse = matchManager.getMatches(c.id)
-                    val topMatches = matchesForCourse
-                        .distinctBy { it.activityId }
-                        .sortedBy { it.timeSeconds }
-                        .take(5)
-                    activeGhostSpecs = if (topMatches.isNotEmpty()) {
-                        topMatches.mapIndexed { idx, m -> GhostSpec(idx + 1, m.timeSeconds, m.curve) }
+                    val selectedMatches = selectRepresentativeGhosts(matchesForCourse)
+                    activeGhostSpecs = if (selectedMatches.isNotEmpty()) {
+                        selectedMatches.mapIndexed { idx, m -> GhostSpec(idx + 1, m.timeSeconds, m.curve) }
                     } else {
                         val pr = coursePrs[c.id]
                         if (pr != null) listOf(GhostSpec(1, pr.timeSeconds, pr.curve)) else emptyList()
@@ -222,6 +219,7 @@ class CourseTracker(
             activeGhostSpecs = emptyList()
             _state.value = TrackingState() // Idle
         } else {
+
             // ── Active on a segment ─────────────────────────────────────
 
             // 1. Find closest segment on polyline
@@ -348,7 +346,26 @@ class CourseTracker(
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to save live attempt", e)
             }
+    companion object {
+        fun selectRepresentativeGhosts(matches: List<CourseMatch>): List<CourseMatch> {
+            val uniqueSorted = matches
+                .distinctBy { it.activityId }
+                .sortedBy { it.timeSeconds }
+
+            if (uniqueSorted.size <= 5) return uniqueSorted
+
+            val n = uniqueSorted.size
+            val indices = listOf(
+                0,
+                kotlin.math.round((n - 1) * 0.25).toInt(),
+                kotlin.math.round((n - 1) * 0.50).toInt(),
+                kotlin.math.round((n - 1) * 0.75).toInt(),
+                n - 1
+            ).distinct()
+
+            return indices.map { uniqueSorted[it] }
         }
     }
 }
+
 
