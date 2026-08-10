@@ -20,10 +20,17 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.*
 
+import com.example.shift.data.CurvePoint
+
 data class TrackingState(
     val activeCourseId: String? = null,
     val distanceRemainingMeters: Double? = null,
     val timeDeltaSeconds: Double? = null
+)
+
+data class PrRecord(
+    val timeSeconds: Int,
+    val curve: List<CurvePoint>?
 )
 
 class CourseTracker(
@@ -47,12 +54,16 @@ class CourseTracker(
     val state: StateFlow<TrackingState> = _state.asStateFlow()
 
     private var courses: List<Course> = emptyList()
-    private val coursePrs = mutableMapOf<String, Int>()
+    private val coursePrs = mutableMapOf<String, PrRecord>()
 
     private var activeCourse: Course? = null
     private var activeStartTime: Long = 0L
     private var decodedPolyline: List<Pair<Double, Double>> = emptyList()
     private var totalPolylineDist: Double = 0.0
+
+    private val currentCurve = mutableListOf<CurvePoint>()
+    private var lastSampleTimeMs = 0L
+    private var lastSampleDist = 0.0
 
     private val started = AtomicBoolean(false)
 
@@ -85,9 +96,10 @@ class CourseTracker(
         val allMatches = matchManager.getAllMatches()
         coursePrs.clear()
         courses.forEach { course ->
-            val pr = allMatches.filter { it.courseId == course.id }.minOfOrNull { it.timeSeconds }
-            if (pr != null) {
-                coursePrs[course.id] = pr
+            val matchesForCourse = allMatches.filter { it.courseId == course.id }
+            val prMatch = matchesForCourse.minByOrNull { it.timeSeconds }
+            if (prMatch != null) {
+                coursePrs[course.id] = PrRecord(prMatch.timeSeconds, prMatch.curve)
             }
         }
     }
@@ -156,6 +168,10 @@ class CourseTracker(
                     activeStartTime = System.currentTimeMillis()
                     decodedPolyline = PolylineUtils.decodePolyline(c.encodedPolyline)
                     totalPolylineDist = polylineLength(decodedPolyline)
+                    currentCurve.clear()
+                    currentCurve.add(CurvePoint(0.0, 0.0))
+                    lastSampleTimeMs = activeStartTime
+                    lastSampleDist = 0.0
                     Log.d(TAG, "Polyline points=${decodedPolyline.size}, totalDist=${totalPolylineDist.toInt()}m")
                     return
                 }
@@ -189,24 +205,39 @@ class CourseTracker(
             val distanceCovered = distanceAlongPolyline(decodedPolyline, closestIndex, lat, lng)
             val distanceRemaining = (totalPolylineDist - distanceCovered).coerceAtLeast(0.0)
             val progressRatio = if (totalPolylineDist > 0) (distanceCovered / totalPolylineDist).coerceIn(0.0, 1.0) else 0.0
-            val elapsedSeconds = ((System.currentTimeMillis() - activeStartTime) / 1000.0).toInt()
+            val nowMs = System.currentTimeMillis()
+            val elapsedSeconds = ((nowMs - activeStartTime) / 1000.0).toInt()
 
-            // 4. Finish check: proximity to END point + meaningful progress (>80%) + min 10s elapsed
+            // 4. Sample ride curve (at most 1 sample per ~2s or ~20m progress; monotonic)
+            if (distanceCovered >= lastSampleDist) {
+                val timeSinceLastMs = nowMs - lastSampleTimeMs
+                val distSinceLast = distanceCovered - lastSampleDist
+                if (timeSinceLastMs >= 2000 || distSinceLast >= 20.0) {
+                    val elapsedSec = (nowMs - activeStartTime) / 1000.0
+                    currentCurve.add(CurvePoint(distanceCovered, elapsedSec))
+                    lastSampleTimeMs = nowMs
+                    lastSampleDist = distanceCovered
+                }
+            }
+
+            // 5. Finish check: proximity to END point + meaningful progress (>80%) + min 10s elapsed
             val distToEnd = haversineMeters(lat, lng, course.endLat, course.endLng)
             if (distToEnd < END_RADIUS_M && progressRatio > 0.8 && elapsedSeconds >= 10) {
                 Log.i(TAG, "Finished segment '${course.name}' in ${elapsedSeconds}s")
-                recordAttempt(course, elapsedSeconds)
+                val finalDist = maxOf(totalPolylineDist, lastSampleDist)
+                currentCurve.add(CurvePoint(finalDist, elapsedSeconds.toDouble()))
+                recordAttempt(course, elapsedSeconds, currentCurve.toList())
                 activeCourse = null
                 _state.value = TrackingState()
                 return
             }
 
-            // 5. Time delta against PR
+            // 6. Time delta against PR
             var timeDelta: Double? = null
-            val prTime = coursePrs[course.id]
-            if (prTime != null && totalPolylineDist > 0) {
-                val elapsedTime = (System.currentTimeMillis() - activeStartTime) / 1000.0
-                val expectedTime = prTime * progressRatio
+            val prRecord = coursePrs[course.id]
+            if (prRecord != null && totalPolylineDist > 0) {
+                val elapsedTime = (nowMs - activeStartTime) / 1000.0
+                val expectedTime = prRecord.timeSeconds * progressRatio
                 timeDelta = elapsedTime - expectedTime
             }
 
@@ -218,14 +249,14 @@ class CourseTracker(
         }
     }
 
-
-    private fun recordAttempt(course: Course, elapsedSeconds: Int) {
+    private fun recordAttempt(course: Course, elapsedSeconds: Int, curve: List<CurvePoint>? = null) {
         val match = CourseMatch(
             courseId = course.id,
             activityId = "live-${System.currentTimeMillis()}",
             activityName = "Live Ride",
             date = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE),
-            timeSeconds = elapsedSeconds
+            timeSeconds = elapsedSeconds,
+            curve = curve
         )
         // Fire-and-forget save on IO
         CoroutineScope(Dispatchers.IO).launch {
@@ -233,8 +264,8 @@ class CourseTracker(
                 matchManager.saveMatches(listOf(match))
                 // Update PR cache
                 val currentPr = coursePrs[course.id]
-                if (currentPr == null || elapsedSeconds < currentPr) {
-                    coursePrs[course.id] = elapsedSeconds
+                if (currentPr == null || elapsedSeconds < currentPr.timeSeconds) {
+                    coursePrs[course.id] = PrRecord(elapsedSeconds, curve)
                     Log.i(TAG, "New PR for '${course.name}': ${elapsedSeconds}s")
                 }
             } catch (e: Exception) {
@@ -243,3 +274,4 @@ class CourseTracker(
         }
     }
 }
+
