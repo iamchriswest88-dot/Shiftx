@@ -66,7 +66,27 @@ class CourseTracker(
         private const val END_RADIUS_M = 40.0
         /** If rider strays further than this from the polyline, abandon tracking */
         private const val OFF_COURSE_M = 40.0
+
+        fun selectRepresentativeGhosts(matches: List<CourseMatch>): List<CourseMatch> {
+            val uniqueSorted = matches
+                .distinctBy { it.activityId }
+                .sortedBy { it.timeSeconds }
+
+            if (uniqueSorted.size <= 5) return uniqueSorted
+
+            val n = uniqueSorted.size
+            val indices = listOf(
+                0,
+                kotlin.math.round((n - 1) * 0.25).toInt(),
+                kotlin.math.round((n - 1) * 0.50).toInt(),
+                kotlin.math.round((n - 1) * 0.75).toInt(),
+                n - 1
+            ).distinct()
+
+            return indices.map { uniqueSorted[it] }
+        }
     }
+
 
     private val courseManager = CourseManager(context)
     private val matchManager = MatchCacheManager(context)
@@ -346,26 +366,10 @@ class CourseTracker(
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to save live attempt", e)
             }
-    companion object {
-        fun selectRepresentativeGhosts(matches: List<CourseMatch>): List<CourseMatch> {
-            val uniqueSorted = matches
-                .distinctBy { it.activityId }
-                .sortedBy { it.timeSeconds }
-
-            if (uniqueSorted.size <= 5) return uniqueSorted
-
-            val n = uniqueSorted.size
-            val indices = listOf(
-                0,
-                kotlin.math.round((n - 1) * 0.25).toInt(),
-                kotlin.math.round((n - 1) * 0.50).toInt(),
-                kotlin.math.round((n - 1) * 0.75).toInt(),
-                n - 1
-            ).distinct()
-
-            return indices.map { uniqueSorted[it] }
         }
     }
 }
+
+
 
 
