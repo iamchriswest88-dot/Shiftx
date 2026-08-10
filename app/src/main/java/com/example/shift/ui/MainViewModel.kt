@@ -952,12 +952,13 @@ class MainViewModel(
                     
                     if (needsStream && unscannedCourses.isNotEmpty()) {
                         try {
-                            val stream = try {
+                            val stream: com.example.shift.data.ParsedStream = try {
                                 val rawJson = currentApi.getActivityStreamsRaw(activity.id, "latlng,time,distance,watts,velocity_smooth")
                                 SegmentScanner.parseStream(rawJson)
                             } catch (e: Exception) {
-                                ParsedStream(null, null, null, null, null, null)
+                                com.example.shift.data.ParsedStream(null, null, null, null, null, null)
                             }
+
                             
                             val newMatches = mutableListOf<CourseMatch>()
                             for (course in unscannedCourses) {

@@ -121,12 +121,13 @@ class CourseDetailViewModel(
                     _scanStatus.value = "Scanning ${count}/${total}..."
                     
                     try {
-                        val stream = try {
+                        val stream: com.example.shift.data.ParsedStream = try {
                             val rawJson = api.getActivityStreamsRaw(act.id, "latlng,time,distance,watts,velocity_smooth")
                             SegmentScanner.parseStream(rawJson)
                         } catch (e: Exception) {
-                            ParsedStream(null, null, null, null, null, null)
+                            com.example.shift.data.ParsedStream(null, null, null, null, null, null)
                         }
+
                         
                         val matches = SegmentScanner.detectGates(currentCourse, act, stream)
                         if (matches.isNotEmpty()) {
