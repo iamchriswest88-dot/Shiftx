@@ -121,8 +121,12 @@ class CourseDetailViewModel(
                     _scanStatus.value = "Scanning ${count}/${total}..."
                     
                     try {
-                        val rawJson = api.getActivityStreamsRaw(act.id, "latlng,time,distance,watts,velocity_smooth")
-                        val stream = SegmentScanner.parseStream(rawJson)
+                        val stream = try {
+                            val rawJson = api.getActivityStreamsRaw(act.id, "latlng,time,distance,watts,velocity_smooth")
+                            SegmentScanner.parseStream(rawJson)
+                        } catch (e: Exception) {
+                            ParsedStream(null, null, null, null, null, null)
+                        }
                         
                         val matches = SegmentScanner.detectGates(currentCourse, act, stream)
                         if (matches.isNotEmpty()) {
@@ -132,12 +136,11 @@ class CourseDetailViewModel(
                             loadCachedMatches()
                         }
                         
-                        scannedIds.toMutableSet().add(act.id)
                         matchCacheManager.markActivityAsScanned(courseId, act.id)
-                        
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
+
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

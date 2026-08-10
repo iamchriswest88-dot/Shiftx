@@ -4,7 +4,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
 import com.example.shift.utils.PolylineUtils
@@ -33,9 +32,27 @@ object SegmentScanner {
         var velocityData: List<Double>? = null
         var hrData: List<Int>? = null
 
-        val streamArray = rawJson.jsonArray
-        for (element in streamArray) {
-            val obj = element.jsonObject
+        val streamElements = try {
+            if (rawJson is JsonArray) {
+                rawJson.toList()
+            } else if (rawJson is kotlinx.serialization.json.JsonObject) {
+                rawJson.entries.map { (key, value) ->
+                    val mapObj = mutableMapOf<String, JsonElement>()
+                    mapObj["type"] = kotlinx.serialization.json.JsonPrimitive(key)
+                    if (value is kotlinx.serialization.json.JsonObject) {
+                        value.jsonObject.forEach { (k, v) -> mapObj[k] = v }
+                    } else {
+                        mapObj["data"] = value
+                    }
+                    kotlinx.serialization.json.JsonObject(mapObj)
+                }
+            } else emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        for (element in streamElements) {
+            val obj = element as? kotlinx.serialization.json.JsonObject ?: continue
             val streamType = obj["type"]?.jsonPrimitive?.content
                 ?: obj["id"]?.jsonPrimitive?.content
                 ?: continue
@@ -49,7 +66,7 @@ object SegmentScanner {
                     if (latArray is JsonArray && lngArray is JsonArray) {
                         latData = latArray.map { if (it is kotlinx.serialization.json.JsonNull) 0.0 else it.jsonPrimitive.double }
                         lngData = lngArray.map { if (it is kotlinx.serialization.json.JsonNull) 0.0 else it.jsonPrimitive.double }
-                    } else if (data is JsonArray && data.size > 0) {
+                    } else if (data is JsonArray && data.isNotEmpty()) {
                         val first = data[0]
                         if (first is JsonArray) {
                             val pairs = data.mapNotNull { item ->
@@ -96,7 +113,26 @@ object SegmentScanner {
         return ParsedStream(pairs, timeData, distData, wattsData, velocityData, hrData)
     }
 
-    fun detectGates(course: Course, activity: Activity, stream: ParsedStream): List<CourseMatch> {
+    private fun getEffectiveStream(activity: Activity, rawStream: ParsedStream): ParsedStream {
+        if (!rawStream.latlng.isNullOrEmpty() && !rawStream.time.isNullOrEmpty()) {
+            return rawStream
+        }
+        val poly = activity.map?.summary_polyline ?: return rawStream
+        val points = PolylineUtils.decodePolyline(poly)
+        if (points.size < 2) return rawStream
+
+        val totalTime = activity.elapsed_time ?: activity.moving_time ?: 0
+        if (totalTime <= 0) return rawStream
+
+        val latlngs = points.map { listOf(it.first, it.second) }
+        val times = points.indices.map { idx ->
+            (idx.toDouble() / (points.size - 1) * totalTime).toInt()
+        }
+        return ParsedStream(latlngs, times, null, null, null, null)
+    }
+
+    fun detectGates(course: Course, activity: Activity, rawStream: ParsedStream): List<CourseMatch> {
+        val stream = getEffectiveStream(activity, rawStream)
         val latlngs = stream.latlng ?: return emptyList()
         val times = stream.time ?: return emptyList()
         if (latlngs.isEmpty() || times.isEmpty()) return emptyList()
@@ -107,12 +143,22 @@ object SegmentScanner {
         var inStartZone = false
         var inEndZone = false
         
-        // Tightened gate proximity radius to 50 meters (down from 200m)
-        val GATE_RADIUS_M = 50.0
+        val GATE_RADIUS_M = 80.0
 
         for (i in latlngs.indices) {
             val pt = latlngs[i]
-            val distStart = haversineDistance(course.startLat, course.startLng, pt[0], pt[1])
+            var distStart = haversineDistance(course.startLat, course.startLng, pt[0], pt[1])
+            if (i > 0 && distStart >= GATE_RADIUS_M) {
+                val prev = latlngs[i - 1]
+                val segDist = PolylineUtils.distanceToSegment(
+                    prev[0], prev[1], pt[0], pt[1],
+                    course.startLat, course.startLng
+                )
+                if (segDist < GATE_RADIUS_M) {
+                    distStart = segDist
+                }
+            }
+
             if (distStart < GATE_RADIUS_M) {
                 if (!inStartZone) {
                     startIndices.add(i)
@@ -122,7 +168,18 @@ object SegmentScanner {
                 inStartZone = false
             }
             
-            val distEnd = haversineDistance(course.endLat, course.endLng, pt[0], pt[1])
+            var distEnd = haversineDistance(course.endLat, course.endLng, pt[0], pt[1])
+            if (i > 0 && distEnd >= GATE_RADIUS_M) {
+                val prev = latlngs[i - 1]
+                val segDist = PolylineUtils.distanceToSegment(
+                    prev[0], prev[1], pt[0], pt[1],
+                    course.endLat, course.endLng
+                )
+                if (segDist < GATE_RADIUS_M) {
+                    distEnd = segDist
+                }
+            }
+
             if (distEnd < GATE_RADIUS_M) {
                 if (!inEndZone) {
                     endIndices.add(i)
@@ -136,7 +193,6 @@ object SegmentScanner {
         val decodedPolyline = course.encodedPolyline?.let { PolylineUtils.decodePolyline(it) } ?: return emptyList()
         if (decodedPolyline.size < 2) return emptyList()
 
-        // Precompute initial & final bearings for the segment polyline
         val courseStartBearing = calculateBearing(
             decodedPolyline.first().first, decodedPolyline.first().second,
             decodedPolyline[kotlin.math.min(3, decodedPolyline.size - 1)].first,
@@ -154,10 +210,8 @@ object SegmentScanner {
         for (s in startIndices) {
             if (s <= lastEndIndex) continue // Prevent overlapping laps
             
-            // Find the first end gate after this start gate
             val e = endIndices.firstOrNull { it > s }
             if (e != null) {
-                // 1. Directional Heading Verification (within ±60 degrees)
                 val trackStartPt1 = latlngs[kotlin.math.max(0, s - 2)]
                 val trackStartPt2 = latlngs[kotlin.math.min(latlngs.size - 1, s + 3)]
                 val riderStartBearing = calculateBearing(trackStartPt1[0], trackStartPt1[1], trackStartPt2[0], trackStartPt2[1])
@@ -173,18 +227,17 @@ object SegmentScanner {
                     continue
                 }
 
-                // 2. Strict Dual 90% Route Coverage & Track Integrity Verification
                 val isValidCoverage = validateSegmentCoverage(
                     latlngs = latlngs,
                     s = s,
                     e = e,
                     polyPoints = decodedPolyline,
-                    minRatio = 0.90,
-                    corridorDistM = 40.0
+                    minRatio = 0.70,
+                    corridorDistM = 60.0
                 )
 
                 if (!isValidCoverage) {
-                    android.util.Log.d("SegmentScanner", "Rejected attempt: Failed 90% route overlap or track integrity check")
+                    android.util.Log.d("SegmentScanner", "Rejected attempt: Failed 70% route overlap or track integrity check")
                     continue
                 }
                 
@@ -221,7 +274,7 @@ object SegmentScanner {
                             avgWatts = avgWatts,
                             avgSpeed = avgVelocity,
                             avgHr = avgHr,
-                            timestamp = System.currentTimeMillis() + matches.size // To ensure uniqueness
+                            timestamp = System.currentTimeMillis() + matches.size
                         )
                     )
                     lastEndIndex = e
@@ -232,23 +285,17 @@ object SegmentScanner {
         return matches
     }
 
-    /**
-     * Validates that:
-     * 1. Course Coverage: At least [minRatio] (90%) of the segment polyline points are matched by track points.
-     * 2. Track Integrity: At least [minRatio] (90%) of recorded track points between [s] and [e] are within [corridorDistM] of the segment.
-     */
     private fun validateSegmentCoverage(
         latlngs: List<List<Double>>,
         s: Int,
         e: Int,
         polyPoints: List<Pair<Double, Double>>,
-        minRatio: Double = 0.90,
-        corridorDistM: Double = 40.0
+        minRatio: Double = 0.70,
+        corridorDistM: Double = 60.0
     ): Boolean {
         val trackSegment = latlngs.subList(s, e + 1)
         if (trackSegment.isEmpty() || polyPoints.isEmpty()) return false
 
-        // 1. Course Coverage
         var matchedPolyCount = 0
         for (polyPt in polyPoints) {
             val hasNearTrackPt = trackSegment.any { trackPt ->
@@ -258,7 +305,6 @@ object SegmentScanner {
         }
         val courseCoverage = matchedPolyCount.toDouble() / polyPoints.size
 
-        // 2. Track Integrity
         var inCorridorTrackCount = 0
         for (trackPt in trackSegment) {
             val distToPoly = PolylineUtils.distanceToPolyline(polyPoints, trackPt[0], trackPt[1])

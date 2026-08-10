@@ -952,8 +952,12 @@ class MainViewModel(
                     
                     if (needsStream && unscannedCourses.isNotEmpty()) {
                         try {
-                            val rawJson = currentApi.getActivityStreamsRaw(activity.id, "latlng,time,distance,watts,velocity_smooth")
-                            val stream = SegmentScanner.parseStream(rawJson)
+                            val stream = try {
+                                val rawJson = currentApi.getActivityStreamsRaw(activity.id, "latlng,time,distance,watts,velocity_smooth")
+                                SegmentScanner.parseStream(rawJson)
+                            } catch (e: Exception) {
+                                ParsedStream(null, null, null, null, null, null)
+                            }
                             
                             val newMatches = mutableListOf<CourseMatch>()
                             for (course in unscannedCourses) {
@@ -970,6 +974,7 @@ class MainViewModel(
                             e.printStackTrace()
                         }
                     }
+
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
