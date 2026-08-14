@@ -90,6 +90,10 @@ class PageNavigator(
         val timeStr = formatMmSs(finished.timeSeconds.toDouble())
         val prText = if (finished.isNewPr) " - NEW PR!" else ""
 
+        // Fanfare first, so it starts under the alert rather than after it. A PR gets
+        // the longer one, which is how you tell the two apart without looking down.
+        karooSystem.dispatch(VictoryFanfare.forFinish(finished.isNewPr))
+
         // The rider is already on the map page and the race strip holds the summary,
         // so no page switching is needed here.
         karooSystem.dispatch(
