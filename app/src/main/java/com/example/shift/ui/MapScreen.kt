@@ -342,7 +342,7 @@ fun MapScreen(
                             }
                         }
                         
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(28.dp))
 
                         var elevationProfile by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<Pair<Double, Double>>?>(null) }
                         var isLoadingProfile by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
@@ -441,7 +441,7 @@ fun MapScreen(
                         
                         // Matched Segments List
                         if (matchedCourses.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(28.dp))
                             Text(
                                 text = "MATCHED SEGMENTS",
                                 style = MaterialTheme.typography.labelMedium.copy(
@@ -454,7 +454,7 @@ fun MapScreen(
                             
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 matchedCourses.forEach { matchInfo ->
                                     val mins = matchInfo.timeSeconds / 60
@@ -474,7 +474,7 @@ fun MapScreen(
                                             .clickable(enabled = onCourseClick != null) {
                                                 onCourseClick?.invoke(matchInfo.course.id)
                                             }
-                                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                                            .padding(vertical = 12.dp, horizontal = 4.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
