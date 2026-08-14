@@ -31,8 +31,20 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      # AGP 9 renamed/restructured unit-test tasks, so discover the task name
+      # instead of hardcoding one that a plugin upgrade can silently remove.
       - name: Unit tests
-        run: ./gradlew :app:testReleaseUnitTest --no-daemon -PversionCode=1 -PversionName=ci
+        run: |
+          TASKS=$(./gradlew -q :app:tasks --all --no-daemon -PversionCode=1 -PversionName=ci || true)
+          for CAND in testReleaseUnitTest testReleaseHostTest testDebugUnitTest testDebugHostTest; do
+            if echo "$TASKS" | grep -q "$CAND"; then T=":app:$CAND"; break; fi
+          done
+          if [ -z "${T:-}" ]; then
+            echo "No unit-test task found. Test-ish tasks were:"; echo "$TASKS" | grep -i test || true
+            exit 1
+          fi
+          echo "Running $T"
+          ./gradlew "$T" --no-daemon -PversionCode=1 -PversionName=ci
 
       - name: Build release APK
         run: ./gradlew :app:assembleRelease --no-daemon -PversionCode=1 -PversionName=ci
