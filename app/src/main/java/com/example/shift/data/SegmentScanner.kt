@@ -148,7 +148,24 @@ object SegmentScanner {
         var inStartZone = false
         var inEndZone = false
         
-        val GATE_RADIUS_M = 150.0
+        // A gate, not a postcode. This was 150m, and because the index was taken on
+        // first ENTRY to the zone, the clock started up to 150m before the line and
+        // stopped up to 150m before the finish. The window was the right length but
+        // shifted early, so a slow approach was timed and a fast run-in to the line
+        // was not — reliably slower than Strava, by however long that approach took.
+        //
+        // A narrow radius is safe here because the loop also measures the gate's
+        // perpendicular distance to the travel segment between consecutive samples,
+        // so a gate crossed between two fixes is still caught.
+        val GATE_RADIUS_M = 25.0
+
+        // Index of closest approach within the current visit to each zone, so the
+        // gate time is taken where the rider was nearest the line rather than
+        // wherever they happened to enter its vicinity.
+        var startBestIdx = -1
+        var startBestDist = Double.MAX_VALUE
+        var endBestIdx = -1
+        var endBestDist = Double.MAX_VALUE
 
         for (i in latlngs.indices) {
             val pt = latlngs[i]
@@ -165,14 +182,18 @@ object SegmentScanner {
             }
 
             if (distStart < GATE_RADIUS_M) {
-                if (!inStartZone) {
-                    startIndices.add(i)
-                    inStartZone = true
+                inStartZone = true
+                if (distStart < startBestDist) {
+                    startBestDist = distStart
+                    startBestIdx = i
                 }
             } else {
+                if (inStartZone && startBestIdx >= 0) startIndices.add(startBestIdx)
                 inStartZone = false
+                startBestIdx = -1
+                startBestDist = Double.MAX_VALUE
             }
-            
+
             var distEnd = haversineDistance(course.endLat, course.endLng, pt[0], pt[1])
             if (i > 0 && distEnd >= GATE_RADIUS_M) {
                 val prev = latlngs[i - 1]
@@ -186,14 +207,22 @@ object SegmentScanner {
             }
 
             if (distEnd < GATE_RADIUS_M) {
-                if (!inEndZone) {
-                    endIndices.add(i)
-                    inEndZone = true
+                inEndZone = true
+                if (distEnd < endBestDist) {
+                    endBestDist = distEnd
+                    endBestIdx = i
                 }
             } else {
+                if (inEndZone && endBestIdx >= 0) endIndices.add(endBestIdx)
                 inEndZone = false
+                endBestIdx = -1
+                endBestDist = Double.MAX_VALUE
             }
         }
+
+        // A gate still open when the ride ends would otherwise be dropped.
+        if (inStartZone && startBestIdx >= 0) startIndices.add(startBestIdx)
+        if (inEndZone && endBestIdx >= 0) endIndices.add(endBestIdx)
 
         ScanLogBuffer.log("Gate hits for activity ${activity.id} on course ${course.id}: startHits=${startIndices.size}, finishHits=${endIndices.size}")
 
@@ -253,7 +282,13 @@ object SegmentScanner {
                     continue
                 }
                 
-                val timeTaken = times[e] - times[s]
+                // Interpolate to where the rider actually crossed each gate rather than
+                // to the nearest fix. At 40km/h a 1Hz stream is ~11m per sample, so
+                // sample-quantised times carry about a second of avoidable error at
+                // each end.
+                val startCrossing = gateCrossingTime(latlngs, times, s, course.startLat, course.startLng)
+                val endCrossing = gateCrossingTime(latlngs, times, e, course.endLat, course.endLng)
+                val timeTaken = kotlin.math.round(endCrossing - startCrossing).toInt()
                 if (timeTaken > 0) {
                     var avgWatts: Int? = null
                     val watts = stream.watts
@@ -340,6 +375,62 @@ object SegmentScanner {
         return courseCoverage >= minRatio && trackIntegrity >= minRatio
     }
 
+
+    /**
+     * Time at which the rider passed closest to a gate, interpolated between fixes.
+     *
+     * [idx] is the sample of closest approach. The true crossing lies on one of the
+     * two travel segments either side of it, so both are projected against and the
+     * nearer one wins, with the time taken proportionally along it.
+     */
+    private fun gateCrossingTime(
+        latlngs: List<List<Double>>,
+        times: List<Int>,
+        idx: Int,
+        gateLat: Double,
+        gateLng: Double
+    ): Double {
+        val fallback = times.getOrNull(idx)?.toDouble() ?: return 0.0
+
+        var bestDist = haversineDistance(gateLat, gateLng, latlngs[idx][0], latlngs[idx][1])
+        var bestTime = fallback
+
+        for (a in intArrayOf(idx - 1, idx)) {
+            val b = a + 1
+            if (a < 0 || b >= latlngs.size || b >= times.size) continue
+
+            val p1 = latlngs[a]
+            val p2 = latlngs[b]
+            val t = projectionFraction(p1[0], p1[1], p2[0], p2[1], gateLat, gateLng)
+
+            // Position at the projection, good enough over a few metres of arc.
+            val projLat = p1[0] + t * (p2[0] - p1[0])
+            val projLng = p1[1] + t * (p2[1] - p1[1])
+            val dist = haversineDistance(gateLat, gateLng, projLat, projLng)
+
+            if (dist < bestDist) {
+                bestDist = dist
+                bestTime = times[a] + t * (times[b] - times[a])
+            }
+        }
+        return bestTime
+    }
+
+    /** Where along p1→p2 the closest point to the target lies, clamped to [0,1]. */
+    private fun projectionFraction(
+        lat1: Double, lon1: Double,
+        lat2: Double, lon2: Double,
+        targetLat: Double, targetLon: Double
+    ): Double {
+        val cosLat = kotlin.math.cos(Math.toRadians(lat1))
+        val dx = (lon2 - lon1) * cosLat
+        val dy = lat2 - lat1
+        val lenSq = dx * dx + dy * dy
+        if (lenSq == 0.0) return 0.0
+        val px = (targetLon - lon1) * cosLat
+        val py = targetLat - lat1
+        return ((px * dx + py * dy) / lenSq).coerceIn(0.0, 1.0)
+    }
 
     private fun calculateBearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val phi1 = Math.toRadians(lat1)
