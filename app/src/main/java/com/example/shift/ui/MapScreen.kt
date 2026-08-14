@@ -326,24 +326,35 @@ fun MapScreen(
                             val avgMph = act.average_speed?.let { it * 2.23694 }
                             val tss = act.icu_training_load
 
-                            // Two rows of three, matching the monthly summary's columns —
-                            // MOVING carries the accent there, so it carries it here.
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            // The stats live in the same dark card as the rides list's
+                            // monthly summary — same surface, corner radius, padding and
+                            // ink, so the two read as one component family.
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        com.example.shift.theme.ShiftDarkSurface,
+                                        RoundedCornerShape(24.dp)
+                                    )
+                                    .padding(20.dp)
                             ) {
-                                StatCard("MILES", "%.1f".format(distMi), Modifier.weight(1f))
-                                StatCard("MOVING", movingStr, Modifier.weight(1f), accent = true)
-                                StatCard("ELEV FT", "%,.0f".format(elevAlt), Modifier.weight(1f))
-                            }
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                StatCard("AVG MPH", avgMph?.let { "%.1f".format(it) } ?: "--", Modifier.weight(1f))
-                                StatCard("AVG W", if (avgWattsVal != null) "$avgWattsVal" else "--", Modifier.weight(1f))
-                                StatCard("TSS", tss?.let { "%,.0f".format(it) } ?: "--", Modifier.weight(1f))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    StatCard("MILES", "%.1f".format(distMi), Modifier.weight(1f))
+                                    StatCard("MOVING", movingStr, Modifier.weight(1f), accent = true)
+                                    StatCard("ELEV FT", "%,.0f".format(elevAlt), Modifier.weight(1f))
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    StatCard("AVG MPH", avgMph?.let { "%.1f".format(it) } ?: "--", Modifier.weight(1f))
+                                    StatCard("AVG W", if (avgWattsVal != null) "$avgWattsVal" else "--", Modifier.weight(1f))
+                                    StatCard("TSS", tss?.let { "%,.0f".format(it) } ?: "--", Modifier.weight(1f))
+                                }
                             }
                         }
                         
@@ -736,10 +747,9 @@ fun TabToggle(
 }
 
 /**
- * One stat in the activity drawer, styled to mirror MonthlySummaryCard on the
- * rides list: hero numeral over a micro label, flat on the sheet rather than
- * boxed. Same recipe with the ink swapped for the white ground — black where
- * the card is white, and the accent value blue where the card's is orange.
+ * One stat in the activity drawer's dark card, in MonthlySummaryCard's exact
+ * voice: hero numeral over a micro label, white ink on the dark surface, the
+ * accent stat in orange like the card's MOVING time.
  */
 @Composable
 fun StatCard(label: String, value: String, modifier: Modifier = Modifier, accent: Boolean = false) {
@@ -747,7 +757,8 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier, accent
         Text(
             text = value,
             style = StatNumeralHero,
-            color = if (accent) RouteLineColor else ShiftTextPrimary
+            color = if (accent) com.example.shift.theme.ShiftOrange
+                else com.example.shift.theme.ShiftTextOnDark
         )
         Text(
             text = label,
