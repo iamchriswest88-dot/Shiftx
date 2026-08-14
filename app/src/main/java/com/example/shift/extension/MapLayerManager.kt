@@ -36,6 +36,9 @@ class MapLayerManager(
     private var mapEmitter: Emitter<MapEffect>? = null
     private var previousCourseId: String? = null
 
+    /** Racer arrows currently on the map, so they can be retired individually. */
+    private var shownGhostIds: Set<String> = emptySet()
+
     fun startMap(emitter: Emitter<MapEffect>) {
         this.mapEmitter = emitter
         emitter.setCancellable {
@@ -56,25 +59,55 @@ class MapLayerManager(
                     onSegmentExit()
                 }
 
-                // ── Tick update for Ghost position ──
-                if (currentCourseId != null && state.ghostLatLng != null) {
-                    val lat = state.ghostLatLng.first
-                    val lng = state.ghostLatLng.second
-                    val bearing = state.ghostBearing ?: 0f
-
-                    val icon = Symbol.Icon(
-                        id = GHOST_SYMBOL_ID,
-                        lat = lat,
-                        lng = lng,
-                        iconRes = R.drawable.ic_ghost,
-                        orientation = bearing
-                    )
-                    mapEmitter?.onNext(ShowSymbols(listOf(icon)))
+                // ── Tick update for every racer's position ──
+                if (currentCourseId != null) {
+                    updateGhostSymbols(state)
                 }
 
                 previousCourseId = currentCourseId
             }
         }
+    }
+
+    /**
+     * Draws one arrow per racer, coloured by rank.
+     *
+     * Previously only the rank-1 ghost was drawn, and in the Karoo's own route-arrow
+     * orange, so it was indistinguishable from the route it sat on.
+     *
+     * Ghosts that have already finished are dropped rather than stacked on the end
+     * point — the drawer's leaderboard reports them instead.
+     */
+    private fun updateGhostSymbols(state: TrackingState) {
+        val racing = state.ghostField.filter { !it.finished }
+
+        val icons = racing.map { ghost ->
+            Symbol.Icon(
+                id = ghostSymbolId(ghost.rank),
+                lat = ghost.latLng.first,
+                lng = ghost.latLng.second,
+                iconRes = iconForRank(ghost.rank),
+                orientation = ghost.bearing
+            )
+        }
+        if (icons.isNotEmpty()) mapEmitter?.onNext(ShowSymbols(icons))
+
+        // Retire any arrow shown last tick that is no longer racing, otherwise a
+        // finished ghost's arrow would be stranded on the map.
+        val liveIds = racing.map { ghostSymbolId(it.rank) }.toSet()
+        val stale = shownGhostIds - liveIds
+        if (stale.isNotEmpty()) mapEmitter?.onNext(HideSymbols(stale.toList()))
+        shownGhostIds = liveIds
+    }
+
+    private fun ghostSymbolId(rank: Int) = "$GHOST_SYMBOL_ID-$rank"
+
+    private fun iconForRank(rank: Int): Int = when (rank) {
+        1 -> R.drawable.ic_ghost_1 // gold — fastest
+        2 -> R.drawable.ic_ghost_2 // silver
+        3 -> R.drawable.ic_ghost_3 // bronze
+        4 -> R.drawable.ic_ghost_4 // cyan
+        else -> R.drawable.ic_ghost_5 // violet
     }
 
     private fun onSegmentEnter(state: TrackingState) {
@@ -95,6 +128,9 @@ class MapLayerManager(
     private fun onSegmentExit() {
         Log.i(TAG, "Dispatching HidePolyline and HideSymbols")
         mapEmitter?.onNext(HidePolyline(POLYLINE_ID))
-        mapEmitter?.onNext(HideSymbols(listOf(GHOST_SYMBOL_ID)))
+        if (shownGhostIds.isNotEmpty()) {
+            mapEmitter?.onNext(HideSymbols(shownGhostIds.toList()))
+            shownGhostIds = emptySet()
+        }
     }
 }

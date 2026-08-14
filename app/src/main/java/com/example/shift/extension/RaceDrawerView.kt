@@ -184,9 +184,10 @@ class RaceDrawerView(
 
         // Leaderboard by current position on the road: most-ahead ghost first,
         // with the rider's own row slotted in at gap zero.
-        data class Row(val label: String, val gap: Double, val isRider: Boolean)
+        data class Row(val label: String, val gap: Double, val isRider: Boolean, val rank: Int)
 
-        val rows = (state.ghostGaps.map { Row("GHOST ${it.rank}", it.gapSeconds, false) } + Row("YOU", 0.0, true))
+        val rows = (state.ghostGaps.map { Row("RACER ${it.rank}", it.gapSeconds, false, it.rank) } +
+            Row("YOU", 0.0, true, 0))
             .sortedByDescending { it.gap }
 
         val rowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 28f; typeface = Typeface.DEFAULT_BOLD }
@@ -201,7 +202,9 @@ class RaceDrawerView(
             rowPaint.textAlign = Paint.Align.LEFT
             rowPaint.color = Color.parseColor("#9E9E9E")
             canvas.drawText("${i + 1}.", 24f, y, rowPaint)
-            rowPaint.color = Color.WHITE
+            // Label carries the same colour as that racer's arrow on the map, so the
+            // leaderboard and the map can be read against each other at a glance.
+            rowPaint.color = if (row.isRider) Color.WHITE else rankColor(row.rank)
             canvas.drawText(row.label, 70f, y, rowPaint)
 
             rowPaint.textAlign = Paint.Align.RIGHT
@@ -266,6 +269,17 @@ class RaceDrawerView(
             if (i > 0) canvas.drawLine(cellW * i, top + 8f, cellW * i, top + cellHeight - 12f, divider)
         }
     }
+
+    /** Must stay in step with MapLayerManager.iconForRank. */
+    private fun rankColor(rank: Int): Int = Color.parseColor(
+        when (rank) {
+            1 -> "#FFD700" // gold — fastest
+            2 -> "#D8D8D8" // silver
+            3 -> "#E08A3C" // bronze
+            4 -> "#00E5FF" // cyan
+            else -> "#B388FF" // violet
+        }
+    )
 
     private fun truncate(text: String, paint: Paint, maxWidth: Float): String {
         if (paint.measureText(text) <= maxWidth) return text
