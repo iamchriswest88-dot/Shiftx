@@ -69,9 +69,15 @@ class RouteCreatorViewModel(
         _targetDistanceMiles.value = miles
     }
 
+    // Bumped whenever the inputs change; an in-flight generation whose token no
+    // longer matches must not publish its result — it answers a stale question.
+    private var generationToken = 0
+
     fun setTerrain(pref: com.example.shift.data.TerrainPreference) {
         _terrain.value = pref
-        // A different terrain wish means the current loop no longer answers it.
+        // A different terrain wish means the current loop no longer answers it,
+        // including one still being generated.
+        generationToken++
         _generatedRoute.value = null
     }
 
@@ -79,6 +85,7 @@ class RouteCreatorViewModel(
         val lat = _startLat.value ?: return
         val lng = _startLng.value ?: return
 
+        val token = ++generationToken
         viewModelScope.launch {
             _isGenerating.value = true
             _errorMessage.value = null
@@ -109,19 +116,25 @@ class RouteCreatorViewModel(
                     onStatusUpdate = { status -> _statusMessage.value = status }
                 )
 
-                if (result != null) {
-                    _generatedRoute.value = result
-                    if (result.hadSpurWarning) {
-                        _statusMessage.value = "Route has a short unpaved section"
+                if (token == generationToken) {
+                    if (result != null) {
+                        _generatedRoute.value = result
+                        if (result.hadSpurWarning) {
+                            _statusMessage.value = "Route has a short unpaved section"
+                        } else {
+                            _statusMessage.value = ""
+                        }
                     } else {
+                        _errorMessage.value = "Could not generate a route. Try a different start location."
                         _statusMessage.value = ""
                     }
                 } else {
-                    _errorMessage.value = "Could not generate a route. Try a different start location."
                     _statusMessage.value = ""
                 }
             } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "Route generation failed"
+                if (token == generationToken) {
+                    _errorMessage.value = e.message ?: "Route generation failed"
+                }
                 _statusMessage.value = ""
             }
 

@@ -294,6 +294,12 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
                     val earlier = visited[cellKey(cx + dx, cy + dy)] ?: continue
                     for (j in earlier) {
                         if (i - j < 5) continue // ≥100m apart along the route
+                        // Physical gate: the same corridor means genuinely close.
+                        // Cell adjacency alone let a parallel road 40-80m away
+                        // count as a retrace, rejecting legitimate loops.
+                        val pdx = (samples[i].second - samples[j].second) * mPerDegLng
+                        val pdy = (samples[i].first - samples[j].first) * mPerDegLat
+                        if (pdx * pdx + pdy * pdy > 35.0 * 35.0) continue
                         var diff = abs(bearings[i] - bearings[j]) % 360.0
                         if (diff > 180.0) diff = 360.0 - diff
                         if (diff > 135.0) { // within ±45° of straight back
@@ -310,8 +316,8 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
     }
 
     /**
-     * Isoperimetric roundness Q = 4πA/P²: 1.0 for a circle, ~0.6 for a square
-     * loop, near 0 for an out-and-back whose enclosed area is nothing.
+     * Isoperimetric roundness Q = 4πA/P²: 1.0 for a circle, π/4 ≈ 0.785 for a
+     * square loop, near 0 for an out-and-back whose enclosed area is nothing.
      */
     fun roundness(points: List<Pair<Double, Double>>): Double {
         if (points.size < 4) return 0.0
@@ -441,6 +447,7 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
 
         var best: LoopRouteResult? = null
         var bestScore = Double.MAX_VALUE
+        var bestTerrainPenalty = 0.0
 
         for ((attemptIdx, factor) in correctionFactors.withIndex()) {
             onStatusUpdate("Trying loops (${attemptIdx + 1}/${correctionFactors.size})...")
@@ -459,6 +466,7 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
             var pts = decoded
             var distance = routeResult.distanceMeters
             var duration = routeResult.durationSeconds
+            var ascent = routeResult.ascentMeters
             if (detectSpurs(decoded).hasSpur) {
                 val pruned = pruneSpurs(decoded)
                 if (pruned.size < decoded.size) {
@@ -469,7 +477,13 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
                             pruned[i].first, pruned[i].second
                         )
                     }
-                    if (d > 0.0 && distance > 0.0) duration *= d / distance
+                    if (d > 0.0 && distance > 0.0) {
+                        // Scale climb with the cut too, else a pruned spur's
+                        // ascent inflates climb-per-km for exactly the
+                        // candidates that needed pruning.
+                        duration *= d / distance
+                        ascent *= d / distance
+                    }
                     distance = d
                     pts = pruned
                 }
@@ -480,7 +494,7 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
             val unpavedFrac =
                 if (routeResult.distanceMeters > 0) routeResult.unpavedDistanceMeters / routeResult.distanceMeters else 0.0
             val distFit = abs(distance - targetDistanceMeters) / targetDistanceMeters
-            val climbPerKm = if (distance > 0) routeResult.ascentMeters / (distance / 1000.0) else 0.0
+            val climbPerKm = if (distance > 0) ascent / (distance / 1000.0) else 0.0
             val terrainPenalty = when (terrain) {
                 TerrainPreference.FLAT -> max(0.0, (climbPerKm - 6.0) / 20.0)
                 TerrainPreference.ROLLING -> 0.0
@@ -506,7 +520,7 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
                 durationSeconds = duration,
                 hadSpurWarning = unpavedFrac > 0.02,
                 spurCoordinates = null,
-                ascentMeters = routeResult.ascentMeters,
+                ascentMeters = ascent,
                 retraceFraction = retrace,
                 familiarity = familiarity
             )
@@ -514,6 +528,7 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
             if (score < bestScore) {
                 bestScore = score
                 best = candidate
+                bestTerrainPenalty = terrainPenalty
             }
 
             // Field of at least three, then stop as soon as the leader is
@@ -522,7 +537,10 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
             if (attemptIdx >= 2 && leader != null &&
                 leader.retraceFraction < 0.02 &&
                 abs(leader.distanceMeters - targetDistanceMeters) <= toleranceMeters &&
-                !leader.hadSpurWarning
+                !leader.hadSpurWarning &&
+                // A spotless flat loop is not spotless when the rider asked for
+                // hills — keep looking unless the terrain wish is also met.
+                bestTerrainPenalty <= 0.15
             ) break
         }
 
