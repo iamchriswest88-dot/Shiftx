@@ -1,7 +1,5 @@
 package com.example.shift.ui
 
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.background
@@ -28,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.example.shift.data.Course
 import com.example.shift.theme.*
 
@@ -41,34 +38,6 @@ fun CoursesScreen(
 ) {
     val courses by viewModel.courses.collectAsState()
     val prMap by viewModel.prMap.collectAsState()
-
-    var selectedCourseId by remember { mutableStateOf<String?>(null) }
-    val webViewRef = remember { mutableStateOf<WebView?>(null) }
-
-    LaunchedEffect(courses) {
-        if (selectedCourseId == null && courses.isNotEmpty()) {
-            selectedCourseId = courses.first().id
-        }
-    }
-
-    LaunchedEffect(selectedCourseId, courses) {
-        val wv = webViewRef.value ?: return@LaunchedEffect
-        val course = courses.find { it.id == selectedCourseId } ?: return@LaunchedEffect
-        wv.post {
-            wv.evaluateJavascript("routeLayer.clearLayers(); courseLayer.clearLayers();", null)
-            if (course.encodedPolyline != null) {
-                val escaped = course.encodedPolyline
-                    .replace("\\", "\\\\")
-                    .replace("'", "\\'")
-                wv.evaluateJavascript("drawCourseRoute('$escaped');", null)
-            } else {
-                wv.evaluateJavascript(
-                    "updateMarkers(${course.startLat}, ${course.startLng}, ${course.endLat}, ${course.endLng});",
-                    null
-                )
-            }
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -103,56 +72,7 @@ fun CoursesScreen(
             }
         }
 
-        // Map preview card
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp)
-                .padding(horizontal = 20.dp),
-            colors = CardDefaults.cardColors(containerColor = ShiftCard),
-            shape = RoundedCornerShape(26.dp)
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            layoutParams = android.view.ViewGroup.LayoutParams(
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            webViewClient = object : WebViewClient() {
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    val course = courses.find { it.id == selectedCourseId }
-                                        ?: courses.firstOrNull()
-                                        ?: return
-                                    if (course.encodedPolyline != null) {
-                                        val escaped = course.encodedPolyline
-                                            .replace("\\", "\\\\")
-                                            .replace("'", "\\'")
-                                        view?.evaluateJavascript("drawCourseRoute('$escaped');", null)
-                                    } else {
-                                        view?.evaluateJavascript(
-                                            "updateMarkers(${course.startLat}, ${course.startLng}, ${course.endLat}, ${course.endLng});",
-                                            null
-                                        )
-                                    }
-                                }
-                            }
-                            loadUrl("file:///android_asset/leaflet_map.html")
-                            webViewRef.value = this
-                        }
-                    },
-                    update = { wv ->
-                        webViewRef.value = wv
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Segments list
         if (courses.isEmpty()) {
@@ -173,15 +93,10 @@ fun CoursesScreen(
                     CourseItem(
                         course = course,
                         prTime = prMap[course.id] ?: "--",
-                        isSelected = selectedCourseId == course.id,
                         onDelete = { viewModel.deleteCourse(course.id) },
-                        onClick = {
-                            if (selectedCourseId == course.id) {
-                                onCourseClick(course.id)
-                            } else {
-                                selectedCourseId = course.id
-                            }
-                        }
+                        // One tap opens. The old tap-to-select existed only to
+                        // preview on the map card that used to sit above the list.
+                        onClick = { onCourseClick(course.id) }
                     )
                 }
             }
@@ -194,7 +109,6 @@ fun CoursesScreen(
 fun CourseItem(
     course: Course,
     prTime: String,
-    isSelected: Boolean,
     onDelete: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -205,13 +119,8 @@ fun CourseItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = { if (!isDeleting) onClick() }),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) ShiftCardSelected else ShiftCard
-        ),
-        shape = RoundedCornerShape(22.dp),
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(
-            1.5.dp, ShiftOrange
-        ) else null
+        colors = CardDefaults.cardColors(containerColor = ShiftCard),
+        shape = RoundedCornerShape(22.dp)
     ) {
         Row(
             modifier = Modifier

@@ -148,8 +148,13 @@ fun MapScreen(
         val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
         var selectedTab by remember { mutableIntStateOf(0) }
 
-        val latlngs = stream?.latlng ?: emptyList()
-        val watts = stream?.watts ?: emptyList()
+        // A fresh creation starts from a blank map. The view model is shared
+        // across screens, so on the first frame `stream` still holds whatever
+        // activity was open last — it gets cleared by loadActivity("new"), but
+        // by then the old route has already been drawn. Ignore it at the source.
+        val isBlankCreation = isCreationMode && activityId == "new"
+        val latlngs = if (isBlankCreation) emptyList() else stream?.latlng ?: emptyList()
+        val watts = if (isBlankCreation) emptyList() else stream?.watts ?: emptyList()
         val jsonArray = remember(latlngs, watts) {
             latlngs.mapIndexedNotNull { index, pt ->
                 if (pt[0] == 0.0 && pt[1] == 0.0) return@mapIndexedNotNull null
@@ -603,6 +608,10 @@ fun MapScreen(
                             view.evaluateJavascript("if (typeof updateMarkers === 'function') updateMarkers($sLat, $sLng, $eLat, $eLng);", null)
                             if (latlngs.isNotEmpty()) {
                                 view.evaluateJavascript("if (typeof drawRoute === 'function') drawRoute($jsonArray, false);", null)
+                            } else {
+                                // No route this composition — take down anything a
+                                // previous one drew, or it lingers on the map.
+                                view.evaluateJavascript("if (typeof routeLayer !== 'undefined') routeLayer.clearLayers();", null)
                             }
                             // Redraw segment overlays in purple
                             view.evaluateJavascript("if (typeof clearSegmentOverlays === 'function') clearSegmentOverlays();", null)
