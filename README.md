@@ -14,6 +14,26 @@ segment matches and cached leaderboards all survive.
 
 No adb, no debugger mode.
 
+## Installing on the Karoo
+
+There is no separate Karoo build. `ShiftExtension` is a service inside this same APK, declared in
+the same manifest against `io.hammerhead.karooext.KAROO_EXTENSION`, so one release covers the phone
+app and the four Karoo data types (`pr-delta`, `segment-distance`, `segment-page`, `race-view`).
+
+**Karoo 3** — no cable needed. Long-press the release link above on your phone, share it to the
+Hammerhead Companion app, and confirm the Install prompt that appears on the Karoo. Hammerhead has
+only verified GitHub URLs for this, and the link above is one.
+
+**Karoo 2** — Companion App sideloading is Karoo 3 only. Enable Developer Options (Settings → About
+→ tap Build Number repeatedly) and USB debugging, then:
+
+```bash
+adb install -r shiftx.apk
+```
+
+`-r` reinstalls in place. That works now that builds share a signing key; before, it failed with
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE` unless you uninstalled first.
+
 ## Cutting a release
 
 Either works, and both produce that same link.
