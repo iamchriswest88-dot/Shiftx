@@ -21,6 +21,19 @@ class RouteCreatorViewModel(
     private val orsClient = OpenRouteServiceClient()
     private val loopGenerator = LoopRouteGenerator(orsClient)
 
+    // Personal heatmap, built off the rides list's summary polylines. Rebuilt
+    // only when the ride count changes — building is O(total track length).
+    private var heatmap: com.example.shift.data.RideHeatmap? = null
+    private var heatmapRideCount = -1
+
+    fun setRideHistory(encodedPolylines: List<String>) {
+        if (encodedPolylines.size == heatmapRideCount) return
+        heatmapRideCount = encodedPolylines.size
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            heatmap = com.example.shift.data.RideHeatmap.build(encodedPolylines)
+        }
+    }
+
     private val _startLat = MutableStateFlow<Double?>(null)
     val startLat: StateFlow<Double?> = _startLat
 
@@ -92,6 +105,7 @@ class RouteCreatorViewModel(
                     startLng = lng,
                     targetDistanceMeters = distanceMeters.toDouble(),
                     terrain = _terrain.value,
+                    heatmap = heatmap,
                     onStatusUpdate = { status -> _statusMessage.value = status }
                 )
 

@@ -268,6 +268,13 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                                     color = if (route.retraceFraction < 0.02) Color(0xFF3E8E4E)
                                         else MaterialTheme.colorScheme.error
                                 )
+                                route.familiarity?.let { fam ->
+                                    Text(
+                                        "%.0f%% on roads you've ridden".format(fam * 100),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,

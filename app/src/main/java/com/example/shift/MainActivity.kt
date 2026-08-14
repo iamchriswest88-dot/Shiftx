@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
 import androidx.compose.material3.*
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -338,6 +339,14 @@ class MainActivity : ComponentActivity() {
 
                     }
                     composable("route_planner") {
+                        // Feed the planner the ride history so generated loops
+                        // can be scored against the personal heatmap.
+                        val plannerActivities by mainViewModel.activities.collectAsState()
+                        LaunchedEffect(plannerActivities) {
+                            routeCreatorViewModel.setRideHistory(
+                                plannerActivities.mapNotNull { it.map?.summary_polyline }
+                            )
+                        }
                         RouteCreatorScreen(
                             viewModel = routeCreatorViewModel,
                             onBack = { navController.popBackStack() }

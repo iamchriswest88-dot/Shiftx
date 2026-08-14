@@ -18,7 +18,9 @@ data class LoopRouteResult(
     val spurCoordinates: List<Pair<Double, Double>>? = null,
     val ascentMeters: Double = 0.0,
     /** Fraction of the route riding a corridor it already rode the other way. */
-    val retraceFraction: Double = 0.0
+    val retraceFraction: Double = 0.0,
+    /** Fraction of the route on roads the rider has ridden before; null = no heatmap coverage here. */
+    val familiarity: Double? = null
 )
 
 /** Rider's terrain wish, mapped to ORS steepness bands and to candidate scoring. */
@@ -424,8 +426,14 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
         startLat: Double, startLng: Double,
         targetDistanceMeters: Double,
         terrain: TerrainPreference = TerrainPreference.ROLLING,
+        heatmap: RideHeatmap? = null,
         onStatusUpdate: (String) -> Unit = {}
     ): LoopRouteResult? = withContext(Dispatchers.Default) {
+        // Familiarity only means something where the rider has history; a start
+        // in fresh territory silently drops the term rather than zeroing every
+        // candidate equally-uselessly.
+        val useHeatmap = heatmap != null && !heatmap.isEmpty &&
+            heatmap.hasCoverageNear(startLat, startLng)
         // ORS treats round-trip length as a suggestion and usually overshoots;
         // pairing seeds with correction factors keeps the field near target.
         val correctionFactors = listOf(1.0, 0.82, 1.0, 0.82, 0.75, 1.0, 0.82, 0.68)
@@ -479,13 +487,17 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
                 TerrainPreference.HILLY -> max(0.0, (12.0 - climbPerKm) / 20.0)
             }
 
+            val familiarity = if (useHeatmap) heatmap!!.familiarity(pts) else null
+
             // Retracing dominates: a clean loop 15% off target beats a
-            // spur-ridden one bang on distance.
+            // spur-ridden one bang on distance. Familiarity pulls toward known
+            // roads without ever outvoting spur-freedom.
             val score = 4.0 * retrace +
                 2.0 * min(1.0, unpavedFrac * 10.0) +
                 distFit +
                 terrainPenalty +
-                0.3 * (1.0 - min(1.0, round / 0.55))
+                0.3 * (1.0 - min(1.0, round / 0.55)) +
+                (if (familiarity != null) 1.2 * (1.0 - familiarity) else 0.0)
 
             val candidate = LoopRouteResult(
                 encodedPolyline = PolylineUtils.encodePolyline(pts),
@@ -495,7 +507,8 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
                 hadSpurWarning = unpavedFrac > 0.02,
                 spurCoordinates = null,
                 ascentMeters = routeResult.ascentMeters,
-                retraceFraction = retrace
+                retraceFraction = retrace,
+                familiarity = familiarity
             )
 
             if (score < bestScore) {
