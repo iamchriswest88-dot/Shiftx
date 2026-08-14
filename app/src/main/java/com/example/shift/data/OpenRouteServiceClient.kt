@@ -54,7 +54,11 @@ class OpenRouteServiceClient {
     }
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun getRoute(apiKey: String, coordinates: List<Pair<Double, Double>>): RouteResult? {
+    suspend fun getRoute(
+        apiKey: String,
+        coordinates: List<Pair<Double, Double>>,
+        steepnessDifficulty: Int = 2
+    ): RouteResult? {
         return withContext(Dispatchers.IO) {
             try {
                 val url = "https://api.openrouteservice.org/v2/directions/cycling-road/json"
@@ -71,6 +75,7 @@ class OpenRouteServiceClient {
                 val requestBodyJson = buildJsonObject {
                     put("coordinates", coordsJson)
                     put("preference", "recommended")
+                    put("elevation", true)
                     put("options", buildJsonObject {
                         put("avoid_features", buildJsonArray {
                             add("ferries")
@@ -78,7 +83,7 @@ class OpenRouteServiceClient {
                         })
                         put("profile_params", buildJsonObject {
                             put("weightings", buildJsonObject {
-                                put("steepness_difficulty", 2)
+                                put("steepness_difficulty", steepnessDifficulty.coerceIn(0, 3))
                             })
                         })
                     })
@@ -106,9 +111,12 @@ class OpenRouteServiceClient {
                             val summary = route["summary"]?.jsonObject
                             val distance = summary?.get("distance")?.jsonPrimitive?.doubleOrNull ?: 0.0
                             val duration = summary?.get("duration")?.jsonPrimitive?.doubleOrNull ?: 0.0
+                            val ascent = summary?.get("ascent")?.jsonPrimitive?.doubleOrNull ?: 0.0
 
                             if (geometry != null) {
-                                return@withContext RouteResult(geometry, distance, duration)
+                                return@withContext RouteResult(
+                                    stripElevationDimension(geometry), distance, duration, 0.0, ascent
+                                )
                             }
                         }
                     }
