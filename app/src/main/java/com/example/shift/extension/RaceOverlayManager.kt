@@ -45,7 +45,15 @@ class RaceOverlayManager(
 ) {
     companion object {
         private const val TAG = "RaceOverlayManager"
-        private const val FULL_HEIGHT_FRACTION = 0.92 // keep the Karoo status bar visible
+
+        /**
+         * Hard ceiling on how much screen the drawer may ever occupy. Every mode is
+         * sized from this, so the map keeps at least two thirds of the display.
+         */
+        private const val MAX_HEIGHT_FRACTION = 1.0 / 3.0
+        private const val EXPANDED_HEIGHT_FRACTION = 0.16
+        private const val CHIP_HEIGHT_FRACTION = 0.055
+
         private const val AUTO_EXPAND_FINAL_METERS = 500.0
         private const val BOTTOM_MARGIN_PX = 10 // keep the OS drawer's edge-swipe reachable
     }
@@ -172,7 +180,10 @@ class RaceOverlayManager(
     private fun attach(mode: DrawerMode) {
         if (attachedMode == mode && view != null) return
 
-        val v = view ?: RaceDrawerView(context, ::onSwipeUp, ::onSwipeDown).also { view = it }
+        val v = view ?: RaceDrawerView(context, ::onSwipeUp, ::onSwipeDown).also {
+            it.chipHeightPx = (context.resources.displayMetrics.heightPixels * CHIP_HEIGHT_FRACTION).toInt()
+            view = it
+        }
         val params = layoutParamsFor(mode)
 
         if (attachedMode == DrawerMode.HIDDEN) {
@@ -201,10 +212,14 @@ class RaceOverlayManager(
     }
 
     private fun layoutParamsFor(mode: DrawerMode): WindowManager.LayoutParams {
+        val screenH = context.resources.displayMetrics.heightPixels
+        val maxH = (screenH * MAX_HEIGHT_FRACTION).toInt()
+
         val height = when (mode) {
             DrawerMode.CHIP -> WindowManager.LayoutParams.WRAP_CONTENT
-            DrawerMode.EXPANDED -> RaceDrawerView.EXPANDED_HEIGHT
-            else -> (context.resources.displayMetrics.heightPixels * FULL_HEIGHT_FRACTION).toInt()
+            // coerceAtMost is the guarantee: no mode can exceed the third.
+            DrawerMode.EXPANDED -> (screenH * EXPANDED_HEIGHT_FRACTION).toInt().coerceAtMost(maxH)
+            else -> maxH
         }
         val width = if (mode == DrawerMode.CHIP) {
             WindowManager.LayoutParams.WRAP_CONTENT
