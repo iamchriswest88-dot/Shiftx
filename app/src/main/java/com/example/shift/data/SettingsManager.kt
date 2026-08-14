@@ -21,6 +21,7 @@ class SettingsManager(private val context: Context) {
         val FIREBASE_URL = stringPreferencesKey("firebase_url")
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
         val AUTO_OPEN_SEGMENT_PAGE = booleanPreferencesKey("auto_open_segment_page")
+        val END_RIDE_FANFARE = stringPreferencesKey("end_ride_fanfare")
     }
 
     val apiKeyFlow: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -45,6 +46,14 @@ class SettingsManager(private val context: Context) {
 
     val autoOpenSegmentPageFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[AUTO_OPEN_SEGMENT_PAGE] ?: true
+    }
+
+    /**
+     * Custom segment-completion melody as "frequency:milliseconds" pairs.
+     * Blank falls back to the built-in fanfare. Stored on the device only.
+     */
+    val endRideFanfareFlow: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[END_RIDE_FANFARE] ?: ""
     }
 
     suspend fun saveApiKey(apiKey: String) {
@@ -80,6 +89,12 @@ class SettingsManager(private val context: Context) {
     suspend fun saveAutoOpenSegmentPage(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTO_OPEN_SEGMENT_PAGE] = enabled
+        }
+    }
+
+    suspend fun saveEndRideFanfare(pattern: String) {
+        context.dataStore.edit { preferences ->
+            preferences[END_RIDE_FANFARE] = pattern
         }
     }
 }

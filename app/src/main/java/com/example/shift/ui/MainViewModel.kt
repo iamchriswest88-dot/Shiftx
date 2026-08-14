@@ -91,6 +91,12 @@ class MainViewModel(
     val geminiApiKey: StateFlow<String> = settingsManager.geminiApiKeyFlow.map { it ?: "" }.stateIn(viewModelScope, SharingStarted.Lazily, "")
     val autoOpenSegmentPage: StateFlow<Boolean> = settingsManager.autoOpenSegmentPageFlow.stateIn(viewModelScope, SharingStarted.Lazily, true)
 
+    val endRideFanfare: StateFlow<String> = settingsManager.endRideFanfareFlow.stateIn(viewModelScope, SharingStarted.Lazily, "")
+
+    fun saveEndRideFanfare(pattern: String) {
+        viewModelScope.launch { settingsManager.saveEndRideFanfare(pattern.trim()) }
+    }
+
     fun setAutoOpenSegmentPage(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.saveAutoOpenSegmentPage(enabled)

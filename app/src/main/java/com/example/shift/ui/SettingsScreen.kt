@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.DirectionsBike
 
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -37,7 +38,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val currentFirebaseUrl by viewModel.firebaseUrl.collectAsState()
     val currentGeminiApiKey by viewModel.geminiApiKey.collectAsState()
     val autoOpenSegmentPage by viewModel.autoOpenSegmentPage.collectAsState()
+    val currentEndRideFanfare by viewModel.endRideFanfare.collectAsState()
 
+    var endRideFanfare by remember { mutableStateOf(currentEndRideFanfare) }
     var apiKey by remember { mutableStateOf(currentApiKey) }
     var athleteId by remember { mutableStateOf(currentAthleteId) }
     var orsApiKey by remember { mutableStateOf(currentOrsApiKey) }
@@ -50,6 +53,10 @@ fun SettingsScreen(viewModel: MainViewModel) {
         orsApiKey = currentOrsApiKey
         firebaseUrl = currentFirebaseUrl
         geminiApiKey = currentGeminiApiKey
+    }
+
+    LaunchedEffect(currentEndRideFanfare) {
+        endRideFanfare = currentEndRideFanfare
     }
 
     val context = LocalContext.current
@@ -132,6 +139,35 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     checked = autoOpenSegmentPage,
                     onCheckedChange = { viewModel.setAutoOpenSegmentPage(it) }
                 )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text("End Ride Fanfare", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "Melody played on the Karoo when you complete a segment. " +
+                    "Enter frequency:milliseconds pairs, using 0 for a rest. " +
+                    "Leave blank for the built-in fanfare.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = endRideFanfare,
+                onValueChange = { endRideFanfare = it },
+                label = { Text("Notes") },
+                placeholder = { Text("523:90, 0:40, 523:90, 784:300, 1047:420") },
+                leadingIcon = { Icon(Icons.Default.MusicNote, contentDescription = null) },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                maxLines = 4
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = { viewModel.saveEndRideFanfare(endRideFanfare) },
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("Save fanfare")
             }
 
 

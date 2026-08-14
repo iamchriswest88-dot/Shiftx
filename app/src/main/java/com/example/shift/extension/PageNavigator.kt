@@ -33,6 +33,9 @@ class PageNavigator(
     private val settingsManager = SettingsManager(context)
     private var autoOpenEnabled = true
 
+    /** User's own melody, kept in device settings. Blank uses the built-in fanfare. */
+    private var endRideFanfare: String = ""
+
     private var previousCourseId: String? = null
 
     fun start(scope: CoroutineScope) {
@@ -40,6 +43,12 @@ class PageNavigator(
         scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             settingsManager.autoOpenSegmentPageFlow.collect { enabled ->
                 autoOpenEnabled = enabled
+            }
+        }
+
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
+            settingsManager.endRideFanfareFlow.collect { pattern ->
+                endRideFanfare = pattern
             }
         }
 
@@ -90,9 +99,10 @@ class PageNavigator(
         val timeStr = formatMmSs(finished.timeSeconds.toDouble())
         val prText = if (finished.isNewPr) " - NEW PR!" else ""
 
-        // Fanfare first, so it starts under the alert rather than after it. A PR gets
-        // the longer one, which is how you tell the two apart without looking down.
-        karooSystem.dispatch(VictoryFanfare.forFinish(finished.isNewPr))
+        // Fanfare first, so it starts under the alert rather than after it. The
+        // rider's own melody wins; the built-in one distinguishes a PR by length.
+        val fanfare = VictoryFanfare.parse(endRideFanfare) ?: VictoryFanfare.forFinish(finished.isNewPr)
+        karooSystem.dispatch(fanfare)
 
         // The rider is already on the map page and the race strip holds the summary,
         // so no page switching is needed here.

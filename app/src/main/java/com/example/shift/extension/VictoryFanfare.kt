@@ -74,4 +74,42 @@ object VictoryFanfare {
     )
 
     fun forFinish(isNewPr: Boolean): PlayBeepPattern = if (isNewPr) personalBest else finish
+
+    /**
+     * Parses a user-supplied melody: "frequency:milliseconds" pairs separated by
+     * commas, spaces or newlines, where frequency 0 (or "r") is a rest.
+     *
+     *     523:90, 0:40, 523:90, 784:300, 1047:420
+     *
+     * Returns null for blank or unusable input so the caller can fall back to the
+     * built-in fanfare. Malformed pairs are skipped rather than failing the whole
+     * melody — a typo should cost a note, not the sound.
+     */
+    fun parse(pattern: String): PlayBeepPattern? {
+        if (pattern.isBlank()) return null
+
+        val tones = pattern
+            .split(',', '\n', ' ', '\t')
+            .mapNotNull { raw ->
+                val part = raw.trim()
+                if (part.isEmpty()) return@mapNotNull null
+                val bits = part.split(':')
+                if (bits.size != 2) return@mapNotNull null
+
+                val freqText = bits[0].trim().lowercase()
+                val durationMs = bits[1].trim().toIntOrNull() ?: return@mapNotNull null
+                if (durationMs <= 0) return@mapNotNull null
+
+                val isRest = freqText == "r" || freqText == "rest" || freqText == "0"
+                val frequency = if (isRest) null else freqText.toIntOrNull() ?: return@mapNotNull null
+                // Outside this range the buzzer has nothing useful to play.
+                if (frequency != null && frequency !in 40..8000) return@mapNotNull null
+
+                tone(frequency, durationMs.coerceAtMost(3000))
+            }
+            // Bounded so a pasted wall of numbers cannot buzz for a minute.
+            .take(64)
+
+        return if (tones.isEmpty()) null else PlayBeepPattern(tones)
+    }
 }
