@@ -35,6 +35,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.shift.theme.MicroLabelStyle
+import com.example.shift.theme.RouteLineColor
+import com.example.shift.theme.ShiftTextMuted
+import com.example.shift.theme.ShiftTextPrimary
+import com.example.shift.theme.StatNumeralHero
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -289,11 +294,14 @@ fun MapScreen(
                                     raw.take(16)
                                 }
                             }
-                            Spacer(modifier = Modifier.height(2.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            // Same voice as the monthly card's month header.
                             Text(
-                                text = dateFormatted,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = dateFormatted.uppercase(),
+                                style = MicroLabelStyle.copy(
+                                    letterSpacing = 2.sp,
+                                    color = ShiftTextMuted
+                                )
                             )
                         }
                         
@@ -313,23 +321,23 @@ fun MapScreen(
                             val avgMph = act.average_speed?.let { it * 2.23694 }
                             val tss = act.icu_training_load
 
-                            // Two rows of four rather than one row of six: six cards on a
-                            // phone leaves each too narrow to read the value.
+                            // Two rows of three, matching the monthly summary's columns —
+                            // MOVING carries the accent there, so it carries it here.
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                StatCard("miles", "%.1f".format(distMi), Modifier.weight(1f))
-                                StatCard("moving", movingStr, Modifier.weight(1f))
-                                StatCard("ft gain", "%,.0f".format(elevAlt), Modifier.weight(1f))
+                                StatCard("MILES", "%.1f".format(distMi), Modifier.weight(1f))
+                                StatCard("MOVING", movingStr, Modifier.weight(1f), accent = true)
+                                StatCard("ELEV FT", "%,.0f".format(elevAlt), Modifier.weight(1f))
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                StatCard("avg mph", avgMph?.let { "%.1f".format(it) } ?: "--", Modifier.weight(1f))
-                                StatCard("avg W", if (avgWattsVal != null) "$avgWattsVal" else "--", Modifier.weight(1f))
+                                StatCard("AVG MPH", avgMph?.let { "%.1f".format(it) } ?: "--", Modifier.weight(1f))
+                                StatCard("AVG W", if (avgWattsVal != null) "$avgWattsVal" else "--", Modifier.weight(1f))
                                 StatCard("TSS", tss?.let { "%,.0f".format(it) } ?: "--", Modifier.weight(1f))
                             }
                         }
@@ -718,25 +726,23 @@ fun TabToggle(
     }
 }
 
+/**
+ * One stat in the activity drawer, styled to mirror MonthlySummaryCard on the
+ * rides list: hero numeral over a micro label, flat on the sheet rather than
+ * boxed. Same recipe with the ink swapped for the white ground — black where
+ * the card is white, and the accent value blue where the card's is orange.
+ */
 @Composable
-fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(12.dp))
-            .padding(vertical = 12.dp, horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
+fun StatCard(label: String, value: String, modifier: Modifier = Modifier, accent: Boolean = false) {
+    Column(modifier = modifier) {
         Text(
             text = value,
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onSurface
+            style = StatNumeralHero,
+            color = if (accent) RouteLineColor else ShiftTextPrimary
         )
-        Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            style = MicroLabelStyle.copy(color = ShiftTextMuted)
         )
     }
 }
