@@ -9,6 +9,15 @@ import java.io.File
 
 class MatchCacheManager(private val context: Context) {
 
+    companion object {
+        /**
+         * Activity-id prefix for efforts timed live on the Karoo. When the same ride
+         * later syncs from Intervals and is scanned, the scanned entry supersedes the
+         * live one — otherwise one effort appears twice with two different times.
+         */
+        const val LIVE_ID_PREFIX = "live-"
+    }
+
     private val cacheFile = File(context.filesDir, "course_matches.json")
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -40,15 +49,51 @@ class MatchCacheManager(private val context: Context) {
     suspend fun saveMatches(matches: List<CourseMatch>) = withContext(Dispatchers.IO) {
         val existing = getAllMatches().toMutableList()
         for (match in matches) {
-            existing.removeAll { 
-                it.courseId == match.courseId && 
-                it.activityId == match.activityId && 
-                it.attemptIndex == match.attemptIndex 
+            existing.removeAll {
+                it.courseId == match.courseId &&
+                it.activityId == match.activityId &&
+                it.attemptIndex == match.attemptIndex
             }
-            existing.add(match)
+            existing.add(reconcileLiveDuplicate(existing, match))
         }
         val content = json.encodeToString(existing)
         cacheFile.writeText(content)
+    }
+
+    /**
+     * When a scanned match arrives for an effort that was already timed live on the
+     * Karoo, retires the live entry so the effort exists once, under the real
+     * activity id and the scanned (interpolated) time.
+     *
+     * The live entry is the only one carrying a pacing curve — the scanner has no
+     * per-effort curve — so the survivor inherits it; dropping it would silently
+     * downgrade that effort's ghost to constant pace.
+     *
+     * Pairing is one-to-one and by closest time on the same course and date, so two
+     * genuine laps ridden the same day cannot both be swallowed by one scan result.
+     */
+    private fun reconcileLiveDuplicate(
+        existing: MutableList<CourseMatch>,
+        incoming: CourseMatch
+    ): CourseMatch {
+        if (incoming.activityId.startsWith(LIVE_ID_PREFIX)) return incoming
+
+        // Live gates (40m radius, no hindsight) and scanned gates disagree by
+        // seconds, not minutes; beyond this it is a different lap.
+        val tolerance = maxOf(30, incoming.timeSeconds / 5)
+
+        val liveTwin = existing
+            .filter {
+                it.activityId.startsWith(LIVE_ID_PREFIX) &&
+                    it.courseId == incoming.courseId &&
+                    it.date == incoming.date &&
+                    kotlin.math.abs(it.timeSeconds - incoming.timeSeconds) <= tolerance
+            }
+            .minByOrNull { kotlin.math.abs(it.timeSeconds - incoming.timeSeconds) }
+            ?: return incoming
+
+        existing.remove(liveTwin)
+        return if (incoming.curve == null) incoming.copy(curve = liveTwin.curve) else incoming
     }
 
 

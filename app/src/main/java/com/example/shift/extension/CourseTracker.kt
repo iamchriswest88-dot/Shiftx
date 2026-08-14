@@ -243,10 +243,66 @@ class CourseTracker(
 
     private var finishHoldUntilMs: Long = 0L
 
+    /** A GPS fix with its wall-clock time, kept for gate-crossing interpolation. */
+    private data class GateFix(val lat: Double, val lng: Double, val ms: Long)
+
+    /** The fix before the current one, i.e. the other end of the travel segment. */
+    private var prevFix: GateFix? = null
+
+    // Closest-approach tracking for the two gates. A gate time taken at the first
+    // fix inside a radius is early by up to that radius; instead the fixes around
+    // closest approach are kept and the crossing is interpolated on the travel
+    // segment nearest the gate — the same rule the scanner applies, so live and
+    // scanned times for one effort agree.
+    private var startPending = false
+    private var startBestDist = Double.MAX_VALUE
+    private var startBestFix: GateFix? = null
+    private var startBeforeBest: GateFix? = null
+
+    private var finishArmed = false
+    private var finishBestDist = Double.MAX_VALUE
+    private var finishBestFix: GateFix? = null
+    private var finishBeforeBest: GateFix? = null
+
+    private fun crossingMs(
+        gateLat: Double,
+        gateLng: Double,
+        before: GateFix?,
+        best: GateFix,
+        after: GateFix?
+    ): Long {
+        var resultMs = best.ms
+        var resultDist = haversineMeters(gateLat, gateLng, best.lat, best.lng)
+        for ((a, b) in listOf(before to best, best to after)) {
+            if (a == null || b == null) continue
+            val t = projectOntoSegment(Pair(a.lat, a.lng), Pair(b.lat, b.lng), gateLat, gateLng)
+            val pLat = a.lat + t * (b.lat - a.lat)
+            val pLng = a.lng + t * (b.lng - a.lng)
+            val d = haversineMeters(gateLat, gateLng, pLat, pLng)
+            if (d < resultDist) {
+                resultDist = d
+                resultMs = a.ms + (t * (b.ms - a.ms)).toLong()
+            }
+        }
+        return resultMs
+    }
+
     private suspend fun processLocationUpdate(lat: Double, lng: Double) {
         // Keep the finish summary on screen rather than letting the idle state
         // overwrite it on the very next GPS tick.
         if (System.currentTimeMillis() < finishHoldUntilMs) return
+
+        val fix = GateFix(lat, lng, System.currentTimeMillis())
+        try {
+            processFix(fix)
+        } finally {
+            prevFix = fix
+        }
+    }
+
+    private suspend fun processFix(fix: GateFix) {
+        val lat = fix.lat
+        val lng = fix.lng
 
         val course = activeCourse
         if (course == null) {
@@ -263,7 +319,15 @@ class CourseTracker(
                 if (distToStart < START_RADIUS_M) {
                     Log.i(TAG, "Entered segment '${c.name}' (${distToStart.toInt()}m from start)")
                     activeCourse = c
-                    activeStartTime = System.currentTimeMillis()
+                    // Provisional — refined to the interpolated line crossing once
+                    // the rider passes closest approach to the start gate.
+                    activeStartTime = fix.ms
+                    startPending = true
+                    startBestDist = distToStart
+                    startBestFix = fix
+                    startBeforeBest = prevFix
+                    finishArmed = false
+                    finishBestDist = Double.MAX_VALUE
                     decodedPolyline = PolylineUtils.decodePolyline(c.encodedPolyline)
                     cumPolylineDistances = computeCumulativeDistances(decodedPolyline)
                     totalPolylineDist = cumPolylineDistances.lastOrNull() ?: 0.0
@@ -295,6 +359,29 @@ class CourseTracker(
 
             // ── Active on a segment ─────────────────────────────────────
 
+            // 0. Refine the provisional start time. Track closest approach to the
+            // start gate; on the first fix moving away again the line has been
+            // crossed, so interpolate when and restart the clock and curve there.
+            if (startPending) {
+                val dStart = haversineMeters(lat, lng, course.startLat, course.startLng)
+                if (dStart <= startBestDist) {
+                    startBeforeBest = prevFix
+                    startBestFix = fix
+                    startBestDist = dStart
+                } else {
+                    val best = startBestFix
+                    if (best != null) {
+                        val crossMs = crossingMs(course.startLat, course.startLng, startBeforeBest, best, fix)
+                        activeStartTime = crossMs
+                        currentCurve.clear()
+                        currentCurve.add(CurvePoint(0.0, 0.0))
+                        lastSampleTimeMs = crossMs
+                        lastSampleDist = 0.0
+                    }
+                    startPending = false
+                }
+            }
+
             // 1. Find closest segment on polyline
             var minDist = Double.MAX_VALUE
             var closestIndex = 0
@@ -308,11 +395,14 @@ class CourseTracker(
                 }
             }
 
-            // 2. Off-course check
-            if (minDist > OFF_COURSE_M) {
+            // 2. Off-course check. Suppressed while the finish is armed: the fixes
+            // just past the end gate leave the polyline by construction, and
+            // abandoning there would swallow the result at the line.
+            if (minDist > OFF_COURSE_M && !finishArmed) {
                 Log.w(TAG, "Off course (${minDist.toInt()}m from polyline), abandoning segment")
                 activeCourse = null
                 activeGhostSpecs = emptyList()
+                startPending = false
                 _state.value = TrackingState()
                 return
             }
@@ -338,24 +428,42 @@ class CourseTracker(
 
             val prRecord = coursePrs[course.id]
 
-            // 5. Finish check: proximity to END point + meaningful progress (>80%) + min 10s elapsed
+            // 5. Finish. Arm inside the end radius, then time the actual crossing:
+            // the first fix inside the radius is up to END_RADIUS_M before the
+            // line, so wait for the first fix moving away again and interpolate —
+            // the same rule the scanner applies, so a live time and the later
+            // scanned time of the same effort agree.
             val distToEnd = haversineMeters(lat, lng, course.endLat, course.endLng)
-            if (distToEnd < END_RADIUS_M && progressRatio > 0.8 && elapsedSecondsInt >= 10) {
-                Log.i(TAG, "Finished segment '${course.name}' in ${elapsedSecondsInt}s")
+            if (!finishArmed && distToEnd < END_RADIUS_M && progressRatio > 0.8 && elapsedSecondsInt >= 10) {
+                finishArmed = true
+                finishBestDist = distToEnd
+                finishBestFix = fix
+                finishBeforeBest = prevFix
+            }
+            if (finishArmed && distToEnd <= finishBestDist) {
+                finishBeforeBest = prevFix
+                finishBestFix = fix
+                finishBestDist = distToEnd
+            } else if (finishArmed) {
+                val best = finishBestFix ?: fix
+                val crossMs = crossingMs(course.endLat, course.endLng, finishBeforeBest, best, fix)
+                val exactElapsed = (crossMs - activeStartTime) / 1000.0
+                val finishedSeconds = exactElapsed.roundToInt()
+                Log.i(TAG, "Finished segment '${course.name}' in ${finishedSeconds}s (interpolated crossing)")
                 val finalDist = maxOf(totalPolylineDist, lastSampleDist)
-                currentCurve.add(CurvePoint(finalDist, elapsedSec))
-                recordAttempt(course, elapsedSecondsInt, currentCurve.toList())
+                currentCurve.add(CurvePoint(finalDist, exactElapsed))
+                recordAttempt(course, finishedSeconds, currentCurve.toList())
                 
-                val isNewPr = prRecord == null || elapsedSecondsInt < prRecord.timeSeconds
+                val isNewPr = prRecord == null || finishedSeconds < prRecord.timeSeconds
 
                 // Final placing is settled on finishing times, not the mid-segment gap
                 // positions — a ghost still out on the road has simply been beaten.
                 // Computed before activeGhostSpecs is cleared below.
                 val ratedGhosts = activeGhostSpecs.filter { it.timeSeconds > 0 }
-                val beatenBy = ratedGhosts.count { it.timeSeconds < elapsedSecondsInt }
+                val beatenBy = ratedGhosts.count { it.timeSeconds < finishedSeconds }
 
                 val finishResult = FinishResult(
-                    timeSeconds = elapsedSecondsInt,
+                    timeSeconds = finishedSeconds,
                     prTimeSeconds = prRecord?.timeSeconds,
                     isNewPr = isNewPr,
                     position = if (ratedGhosts.isEmpty()) null else beatenBy + 1,
@@ -363,6 +471,8 @@ class CourseTracker(
                 )
                 activeCourse = null
                 activeGhostSpecs = emptyList()
+                finishArmed = false
+                startPending = false
                 // activeCourseId is deliberately left null. PageNavigator and
                 // MapLayerManager detect segment exit as "was non-null, now null";
                 // emitting the course id here meant neither saw a transition on this
@@ -429,7 +539,7 @@ class CourseTracker(
 
         val match = CourseMatch(
             courseId = course.id,
-            activityId = "live-${System.currentTimeMillis()}",
+            activityId = "${MatchCacheManager.LIVE_ID_PREFIX}${System.currentTimeMillis()}",
             activityName = "Live Ride",
             date = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE),
             timeSeconds = elapsedSeconds,
