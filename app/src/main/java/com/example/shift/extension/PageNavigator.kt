@@ -32,6 +32,13 @@ class PageNavigator(
     companion object {
         private const val TAG = "PageNavigator"
 
+        /**
+         * Street level on the Karoo's 8 (wide) to 18 (street) scale. Held for every
+         * segment regardless of length: what matters mid-effort is seeing the road
+         * you are on, not fitting the whole segment on screen.
+         */
+        private const val STREET_ZOOM = 17.0
+
         /** Zoom steps are asynchronous; give the map time to report the new level. */
         private const val ZOOM_SETTLE_MS = 300L
         /** Bound the stepping so a map that never reports back cannot loop. */
@@ -133,7 +140,7 @@ class PageNavigator(
             // level out from under the framing applied next.
             karooSystem.dispatch(ShowMapPage(zoom = false))
             navScope?.launch(Dispatchers.IO + extensionExceptionHandler) {
-                guarded("zoom to segment") { zoomToSegment(state.segmentLengthMeters) }
+                guarded("zoom to segment") { zoomToSegment() }
             }
         }
     }
@@ -149,13 +156,12 @@ class PageNavigator(
      * ZoomPage only steps in or out, so this reads OnMapZoomLevel back and steps until
      * it reaches the target, rather than guessing a number of presses.
      */
-    private suspend fun zoomToSegment(lengthMeters: Double?) {
-        val target = targetZoomFor(lengthMeters)
+    private suspend fun zoomToSegment() {
         zoomBeforeSegment = currentZoom
 
         repeat(MAX_ZOOM_STEPS) {
             val now = currentZoom ?: return
-            if (now >= target - ZOOM_EPSILON) return
+            if (now >= STREET_ZOOM - ZOOM_EPSILON) return
             karooSystem.dispatch(ZoomPage(zoomIn = true))
             delay(ZOOM_SETTLE_MS)
         }
@@ -174,17 +180,6 @@ class PageNavigator(
         }
     }
 
-    /**
-     * Zoom levels run 8 (wide) to 18 (street). A short segment can be framed tightly;
-     * a long one has to sit further out to stay on screen.
-     */
-    private fun targetZoomFor(lengthMeters: Double?): Double = when {
-        lengthMeters == null -> 16.0
-        lengthMeters < 500.0 -> 17.0
-        lengthMeters < 2_000.0 -> 16.0
-        lengthMeters < 5_000.0 -> 15.0
-        else -> 14.0
-    }
 
     private fun onFinish(finished: FinishResult) {
         val timeStr = formatMmSs(finished.timeSeconds.toDouble())

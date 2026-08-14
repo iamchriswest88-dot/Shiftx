@@ -59,9 +59,7 @@ data class TrackingState(
     /** Gap to every ghost in the field, for the full-screen leaderboard. */
     val ghostGaps: List<GhostGap> = emptyList(),
     /** Nearest segment start ahead of the rider, when within announcement range. */
-    val upcoming: UpcomingSegment? = null,
-    /** Total length of the active segment, used to pick a map zoom that frames it. */
-    val segmentLengthMeters: Double? = null
+    val upcoming: UpcomingSegment? = null
 )
 
 data class UpcomingSegment(
@@ -408,7 +406,6 @@ class CourseTracker(
                 gapAheadSeconds = gapAhead,
                 gapBehindSeconds = gapBehind,
                 ghostGaps = gaps,
-                segmentLengthMeters = totalPolylineDist,
                 activeCourseId = course.id,
                 courseName = course.name,
                 distanceRemainingMeters = distanceRemaining,
