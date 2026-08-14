@@ -36,21 +36,21 @@ class PageNavigator(
 
     fun start(scope: CoroutineScope) {
         // Collect auto-open setting
-        scope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             settingsManager.autoOpenSegmentPageFlow.collect { enabled ->
                 autoOpenEnabled = enabled
             }
         }
 
         // Collect ActiveRidePage events
-        scope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             karooSystem.consumerFlow<ActiveRidePage>().collect { event ->
                 currentPage = event.page
             }
         }
 
         // Observe course tracker state for gate entry, finish, and abandon
-        scope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             tracker.state.collectLatest { state ->
                 val currentCourseId = state.activeCourseId
 
@@ -97,7 +97,7 @@ class PageNavigator(
 
         returnPage = currentPage
 
-        scope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             for (attempt in 1..8) {
                 if (isSegmentPageActive()) {
                     Log.i(TAG, "Successfully paged to Segment Page on attempt $attempt")
@@ -127,7 +127,7 @@ class PageNavigator(
         if (!autoOpenEnabled) return
 
         val target = returnPage
-        scope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             delay(8000) // Hold summary on page for 8 seconds
             if (target != null) {
                 for (attempt in 1..8) {
@@ -154,7 +154,7 @@ class PageNavigator(
         if (!autoOpenEnabled) return
 
         val target = returnPage
-        scope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             if (target != null) {
                 for (attempt in 1..8) {
                     if (currentPage == target) break

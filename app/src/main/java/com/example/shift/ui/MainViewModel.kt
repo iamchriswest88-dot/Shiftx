@@ -928,8 +928,14 @@ class MainViewModel(
         }
     }
 
+    private val autoScanRunning = java.util.concurrent.atomic.AtomicBoolean(false)
+
     fun scanUnscannedActivities(limit: Int = 500) {
         val currentApi = api ?: return
+        // fetchActivities() runs from several places (startup, settings save, pull to
+        // refresh, permission grant) and each ends here. Without this guard the passes
+        // overlap, race the same unscanned set and multiply the request rate.
+        if (!autoScanRunning.compareAndSet(false, true)) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val courses = courseManager.coursesFlow.first()
@@ -937,7 +943,8 @@ class MainViewModel(
 
                 val activitiesList = activities.value
                 val activitiesToScan = activitiesList.take(limit)
-                
+                var scannedAny = false
+
                 for (activity in activitiesToScan) {
                     var needsStream = false
                     val unscannedCourses = mutableListOf<com.example.shift.data.Course>()
@@ -953,20 +960,32 @@ class MainViewModel(
                     if (needsStream && unscannedCourses.isNotEmpty()) {
                         try {
                             com.example.shift.data.ScanLogBuffer.log("Auto-scanning activity ${activity.id} ('${activity.name}', ${activity.start_date_local}) against ${unscannedCourses.size} unscanned courses")
-                            var fetchSuccess = false
+                            var markScanned = false
+                            var abortPass = false
                             val stream: com.example.shift.data.ParsedStream = try {
                                 val rawJson = currentApi.getActivityStreamsRaw(activity.id, "latlng,time,distance,watts,velocity_smooth")
-                                fetchSuccess = true
+                                markScanned = true
                                 com.example.shift.data.ScanLogBuffer.log("Stream fetch OK for activity ${activity.id}")
                                 SegmentScanner.parseStream(rawJson)
                             } catch (e: Exception) {
-                                val errMsg = "Failed stream fetch for activity ${activity.id}: ${e.message}"
-                                android.util.Log.w("MainViewModel", errMsg)
-                                com.example.shift.data.ScanLogBuffer.log(errMsg)
+                                val reason = com.example.shift.data.ScanFailure.describe(e)
+                                if (com.example.shift.data.ScanFailure.isTransient(e)) {
+                                    abortPass = true
+                                    com.example.shift.data.ScanLogBuffer.log("Pausing auto-scan at activity ${activity.id}: $reason")
+                                } else {
+                                    markScanned = true
+                                    com.example.shift.data.ScanLogBuffer.log("No stream for activity ${activity.id} ($reason), marking scanned")
+                                }
+                                android.util.Log.w("MainViewModel", "Stream fetch failed for ${activity.id}: $reason")
                                 com.example.shift.data.ParsedStream(null, null, null, null, null, null)
                             }
                             
-                            if (fetchSuccess) {
+                            if (abortPass) {
+                                com.example.shift.data.ScanLogBuffer.log("Auto-scan paused, resumes on next refresh")
+                                break
+                            }
+
+                            if (markScanned) {
                                 for (course in unscannedCourses) {
                                     val matches = SegmentScanner.detectGates(course, activity, stream)
                                     if (matches.isNotEmpty()) {
@@ -974,8 +993,12 @@ class MainViewModel(
                                     }
                                     matchCacheManager.markActivityAsScanned(course.id, activity.id)
                                 }
-                                reloadSegmentCounts()
+                                scannedAny = true
                             }
+
+                            // Pace requests so Intervals.icu does not rate limit us into
+                            // a pass where every fetch fails.
+                            kotlinx.coroutines.delay(60L)
                         } catch (e: Exception) {
                             val errMsg = "Scan error for activity ${activity.id}: ${e.message}"
                             android.util.Log.w("MainViewModel", errMsg)
@@ -983,12 +1006,17 @@ class MainViewModel(
                         }
                     }
                 }
+                // Once at the end rather than once per activity, which previously
+                // launched a fresh coroutine for each of up to 500 activities.
+                if (scannedAny) reloadSegmentCounts()
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
+                autoScanRunning.set(false)
             }
         }
     }
-    
+
     private val _orphanedCount = MutableStateFlow(0)
     val orphanedCount: StateFlow<Int> = _orphanedCount.asStateFlow()
 

@@ -66,6 +66,12 @@ class CourseTracker(
         private const val END_RADIUS_M = 40.0
         /** If rider strays further than this from the polyline, abandon tracking */
         private const val OFF_COURSE_M = 40.0
+        /**
+         * How long the finish summary stays on screen. Must outlast PageNavigator's
+         * 8s hold, otherwise the next location update wipes the summary before the
+         * rider has seen it.
+         */
+        private const val FINISH_HOLD_MS = 10_000L
 
         fun selectRepresentativeGhosts(matches: List<CourseMatch>): List<CourseMatch> {
             if (matches.isEmpty()) return emptyList()
@@ -118,7 +124,7 @@ class CourseTracker(
         if (!started.compareAndSet(false, true)) return
 
         // Continuously collect courses so edits in the app are picked up live
-        scope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             courseManager.coursesFlow.collect { latestCourses ->
                 courses = latestCourses
                 Log.d(TAG, "Courses reloaded: ${courses.size} segments")
@@ -131,9 +137,11 @@ class CourseTracker(
         // OnLocationChanged (karoo-ext >= 1.1.3) is the supported way to observe
         // position; streaming DataType.Type.LOCATION is unreliable outside an
         // active recording and is not what the official sample uses.
-        scope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             karooSystem.consumerFlow<OnLocationChanged>().collect { loc ->
-                processLocationUpdate(loc.lat, loc.lng)
+                guarded("location tick") {
+                    processLocationUpdate(loc.lat, loc.lng)
+                }
             }
         }
     }
@@ -210,7 +218,12 @@ class CourseTracker(
 
     private var activeGhostSpecs: List<GhostSpec> = emptyList()
 
+    private var finishHoldUntilMs: Long = 0L
+
     private suspend fun processLocationUpdate(lat: Double, lng: Double) {
+        // Keep the finish summary on screen rather than letting the idle state
+        // overwrite it on the very next GPS tick.
+        if (System.currentTimeMillis() < finishHoldUntilMs) return
 
         val course = activeCourse
         if (course == null) {
@@ -308,11 +321,17 @@ class CourseTracker(
                 )
                 activeCourse = null
                 activeGhostSpecs = emptyList()
+                // activeCourseId is deliberately left null. PageNavigator and
+                // MapLayerManager detect segment exit as "was non-null, now null";
+                // emitting the course id here meant neither saw a transition on this
+                // tick, and the following idle tick looked like an abandon instead.
                 _state.value = TrackingState(
-                    activeCourseId = course.id,
                     courseName = course.name,
                     finished = finishResult
                 )
+                // Without this the next location update (~1s later) replaces the
+                // summary with the idle state before it can be read.
+                finishHoldUntilMs = System.currentTimeMillis() + FINISH_HOLD_MS
                 return
             }
 
@@ -361,7 +380,7 @@ class CourseTracker(
             curve = curve
         )
         // Fire-and-forget save on IO
-        CoroutineScope(Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.IO + extensionExceptionHandler).launch {
             try {
                 matchManager.saveMatches(listOf(match))
                 // Update PR cache

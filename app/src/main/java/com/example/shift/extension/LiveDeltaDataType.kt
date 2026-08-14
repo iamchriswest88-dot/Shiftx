@@ -33,7 +33,7 @@ class LiveDeltaDataType(
      * the field is considered live; the value doubles as a numeric fallback.
      */
     override fun startStream(emitter: Emitter<StreamState>) {
-        val job = CoroutineScope(Dispatchers.IO).launch {
+        val job = CoroutineScope(Dispatchers.IO + extensionExceptionHandler).launch {
             tracker.state.collect { state ->
                 val delta = state.timeDeltaSeconds ?: 0.0
                 emitter.onNext(
@@ -52,10 +52,10 @@ class LiveDeltaDataType(
     override fun startView(context: Context, config: ViewConfig, emitter: ViewEmitter) {
         configJob?.cancel()
         viewJob?.cancel()
-        configJob = CoroutineScope(Dispatchers.IO).launch {
+        configJob = CoroutineScope(Dispatchers.IO + extensionExceptionHandler).launch {
             emitter.onNext(UpdateGraphicConfig(showHeader = true))
         }
-        viewJob = CoroutineScope(Dispatchers.IO).launch {
+        viewJob = CoroutineScope(Dispatchers.IO + extensionExceptionHandler).launch {
             tracker.state.collect { state ->
                 // Build a fresh RemoteViews every update. Reusing one instance
                 // accumulates actions on every set*() call and eventually blows

@@ -37,7 +37,7 @@ class MapLayerManager(
     }
 
     fun start(scope: CoroutineScope) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             tracker.state.collectLatest { state ->
                 val currentCourseId = state.activeCourseId
 

@@ -33,7 +33,7 @@ class SegmentPageDataType(
     private var viewJob: Job? = null
 
     override fun startStream(emitter: Emitter<StreamState>) {
-        val job = CoroutineScope(Dispatchers.IO).launch {
+        val job = CoroutineScope(Dispatchers.IO + extensionExceptionHandler).launch {
             tracker.state.collect { state ->
                 val delta = state.timeDeltaSeconds ?: 0.0
                 emitter.onNext(
@@ -53,19 +53,21 @@ class SegmentPageDataType(
         configJob?.cancel()
         viewJob?.cancel()
 
-        configJob = CoroutineScope(Dispatchers.IO).launch {
+        configJob = CoroutineScope(Dispatchers.IO + extensionExceptionHandler).launch {
             emitter.onNext(UpdateGraphicConfig(showHeader = false))
         }
 
-        viewJob = CoroutineScope(Dispatchers.IO).launch {
+        viewJob = CoroutineScope(Dispatchers.IO + extensionExceptionHandler).launch {
             tracker.state.collect { state ->
-                val views = RemoteViews(context.packageName, R.layout.layout_segment_page)
-                val width = config.viewSize.first.takeIf { it > 0 } ?: 480
-                val height = config.viewSize.second.takeIf { it > 0 } ?: 800
+                guarded("segment-page render") {
+                    val views = RemoteViews(context.packageName, R.layout.layout_segment_page)
+                    val width = config.viewSize.first.takeIf { it > 0 } ?: 480
+                    val height = config.viewSize.second.takeIf { it > 0 } ?: 800
 
-                val bitmap = renderBitmap(width, height, state)
-                views.setImageViewBitmap(R.id.segment_page_image, bitmap)
-                emitter.updateView(views)
+                    val bitmap = renderBitmap(width, height, state)
+                    views.setImageViewBitmap(R.id.segment_page_image, bitmap)
+                    emitter.updateView(views)
+                }
             }
         }
 

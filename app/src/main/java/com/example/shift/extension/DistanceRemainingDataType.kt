@@ -26,7 +26,7 @@ class DistanceRemainingDataType(
     private var viewJob: Job? = null
 
     override fun startStream(emitter: Emitter<StreamState>) {
-        val job = CoroutineScope(Dispatchers.IO).launch {
+        val job = CoroutineScope(Dispatchers.IO + extensionExceptionHandler).launch {
             tracker.state.collect { state ->
                 val remaining = state.distanceRemainingMeters ?: 0.0
                 emitter.onNext(
@@ -45,10 +45,10 @@ class DistanceRemainingDataType(
     override fun startView(context: Context, config: ViewConfig, emitter: ViewEmitter) {
         configJob?.cancel()
         viewJob?.cancel()
-        configJob = CoroutineScope(Dispatchers.IO).launch {
+        configJob = CoroutineScope(Dispatchers.IO + extensionExceptionHandler).launch {
             emitter.onNext(UpdateGraphicConfig(showHeader = true))
         }
-        viewJob = CoroutineScope(Dispatchers.IO).launch {
+        viewJob = CoroutineScope(Dispatchers.IO + extensionExceptionHandler).launch {
             tracker.state.collect { state ->
                 val views = RemoteViews(context.packageName, R.layout.layout_distance_remaining)
                 val distanceMeters = state.distanceRemainingMeters

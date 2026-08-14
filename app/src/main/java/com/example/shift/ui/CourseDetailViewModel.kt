@@ -79,17 +79,37 @@ class CourseDetailViewModel(
         }
     }
 
+    /**
+     * Reloads matches from cache and nothing else.
+     *
+     * This must never start a scan: it is called from scanActivities' finally block,
+     * and a scan trigger here is mutual recursion that scans forever.
+     */
     fun loadCachedMatches() {
         viewModelScope.launch {
             val cached = matchCacheManager.getMatches(courseId)
             _matches.value = cached.sortedBy { it.timeSeconds }
-            
+        }
+    }
+
+    /**
+     * Screen-entry path: reload, then scan only if there is genuinely new work.
+     *
+     * The trigger deliberately does not consider whether the match list is empty. A
+     * segment you have never ridden has no matches and never will, so treating
+     * "no matches" as "needs scanning" rescanned the entire ride history on repeat.
+     */
+    fun loadAndMaybeScan() {
+        viewModelScope.launch {
+            val cached = matchCacheManager.getMatches(courseId)
+            _matches.value = cached.sortedBy { it.timeSeconds }
+
             val currentCourse = _course.value
             if (currentCourse != null && !_isScanning.value) {
                 val scannedIds = matchCacheManager.getScannedActivities(courseId)
                 val allActivities = mainViewModel.activities.value
                 val unscanned = allActivities.filter { !scannedIds.contains(it.id) }
-                if (unscanned.isNotEmpty() || cached.isEmpty()) {
+                if (unscanned.isNotEmpty()) {
                     scanActivities(forceRescan = false)
                 }
             }
@@ -138,30 +158,45 @@ class CourseDetailViewModel(
                     _scanStatus.value = "Scanning ${count}/${total}..."
                     com.example.shift.data.ScanLogBuffer.log("Scanning activity ${act.id} ('${act.name}', ${act.start_date_local}) for course ${currentCourse.name}")
                     
-                    var fetchSuccess = false
+                    var markScanned = false
+                    var abortPass = false
                     val stream: com.example.shift.data.ParsedStream = try {
                         val rawJson = api.getActivityStreamsRaw(act.id, "latlng,time,distance,watts,velocity_smooth")
-                        fetchSuccess = true
+                        markScanned = true
                         com.example.shift.data.ScanLogBuffer.log("Stream fetch OK for activity ${act.id}")
                         SegmentScanner.parseStream(rawJson)
                     } catch (e: Exception) {
-                        val errMsg = "Failed stream fetch for activity ${act.id}: ${e.message}"
-                        android.util.Log.w("CourseDetailVM", errMsg)
-                        com.example.shift.data.ScanLogBuffer.log(errMsg)
+                        val reason = com.example.shift.data.ScanFailure.describe(e)
+                        if (com.example.shift.data.ScanFailure.isTransient(e)) {
+                            // Rate limited or offline — stop rather than hammer on, and
+                            // leave the activity unscanned so it is retried next time.
+                            abortPass = true
+                            com.example.shift.data.ScanLogBuffer.log("Pausing scan at activity ${act.id}: $reason")
+                        } else {
+                            // No stream will ever exist for this activity; mark it so it
+                            // stops being retried on every pass.
+                            markScanned = true
+                            com.example.shift.data.ScanLogBuffer.log("No stream for activity ${act.id} ($reason), marking scanned")
+                        }
+                        android.util.Log.w("CourseDetailVM", "Stream fetch failed for ${act.id}: $reason")
                         com.example.shift.data.ParsedStream(null, null, null, null, null, null)
                     }
 
-                    
+                    if (abortPass) {
+                        _scanStatus.value = "Paused — rate limited, will resume"
+                        break
+                    }
+
                     val matches = SegmentScanner.detectGates(currentCourse, act, stream)
                     if (matches.isNotEmpty()) {
                         matchCacheManager.saveMatches(matches)
                         loadCachedMatches()
                     }
-                    
-                    if (fetchSuccess) {
+
+                    if (markScanned) {
                         matchCacheManager.markActivityAsScanned(courseId, act.id)
                     }
-                    
+
                     kotlinx.coroutines.delay(60L)
 
                 }

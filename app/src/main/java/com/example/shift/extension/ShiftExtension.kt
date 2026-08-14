@@ -17,7 +17,7 @@ class ShiftExtension : KarooExtension("shift-extension", "1.0") {
     private lateinit var courseTracker: CourseTracker
     private lateinit var pageNavigator: PageNavigator
     private lateinit var mapLayerManager: MapLayerManager
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + extensionExceptionHandler)
 
     override val types by lazy {
         listOf(

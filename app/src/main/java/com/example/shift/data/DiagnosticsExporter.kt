@@ -39,7 +39,8 @@ data class DiagnosticsPayload(
     val courses: List<CourseDiagnosticInfo>,
     val matches: List<CourseMatch>,
     val scannedCounts: Map<String, Int>,
-    val scanLog: List<String>
+    val scanLog: List<String>,
+    val crashLog: List<String> = emptyList()
 )
 
 object DiagnosticsExporter {
@@ -75,7 +76,8 @@ object DiagnosticsExporter {
                 courses = courseInfos,
                 matches = matches,
                 scannedCounts = scannedCounts,
-                scanLog = ScanLogBuffer.getLogs()
+                scanLog = ScanLogBuffer.getLogs(),
+                crashLog = CrashLogger.getEntries(context)
             )
 
             val jsonContent = json.encodeToString(payload)
