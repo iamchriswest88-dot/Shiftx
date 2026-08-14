@@ -3,9 +3,7 @@ package com.example.shift.data
 import com.example.shift.utils.PolylineUtils
 import kotlin.math.cos
 import kotlin.math.floor
-import kotlin.math.ln
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
@@ -86,13 +84,13 @@ class RideHeatmap private constructor(
 
     /**
      * Fraction of [points] lying within a ridden cell (3x3 neighborhood, so the
-     * effective tolerance is ~25-50m), each hit weighted by ln(1+visits) capped
-     * at 3 rides — well-worn roads count more, but not without bound. Returns
-     * 0..1; 0 when the heatmap knows nothing about this area.
+     * effective tolerance is ~25-50m). A cell counts if ANY ride touched it —
+     * the displayed "% on roads you've ridden" must mean exactly that; an
+     * earlier visit-count weighting made a road ridden once score 50%, which
+     * reads as a lie to someone who has ridden every metre of it.
      */
     fun familiarity(points: List<Pair<Double, Double>>): Double {
         if (cells.isEmpty() || points.size < 2) return 0.0
-        val maxWeight = ln(4.0) // 3 visits saturates
 
         var weighted = 0.0
         var samples = 0
@@ -118,7 +116,7 @@ class RideHeatmap private constructor(
                     }
                 }
                 if (bestCount > 0) {
-                    weighted += min(ln(1.0 + bestCount), maxWeight) / maxWeight
+                    weighted += 1.0
                 }
             }
             prev = cur

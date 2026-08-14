@@ -27,7 +27,7 @@ class RideHeatmapTest {
         assertEquals(1, hm.rideCount)
         // The same road again should be near-fully familiar.
         val fam = hm.familiarity(ride)
-        assertTrue("Re-riding the identical road should be highly familiar, got $fam", fam > 0.6)
+        assertTrue("Re-riding the identical road should be fully familiar, got $fam", fam > 0.9)
         assertTrue(hm.hasCoverageNear(53.01, -2.0))
     }
 
@@ -42,17 +42,13 @@ class RideHeatmapTest {
     }
 
     @Test
-    fun testRepeatRidesWeighMoreThanOne() {
-        val road = line(53.0, -2.0, 0.00045, 0.0, 100)
-        val encoded = PolylineUtils.encodePolyline(road)
-        val once = RideHeatmap.build(listOf(encoded))
-        val weekly = RideHeatmap.build(List(5) { encoded })
-        val famOnce = once.familiarity(road)
-        val famWeekly = weekly.familiarity(road)
-        assertTrue(
-            "Five rides ($famWeekly) should score at least a once-ridden road ($famOnce)",
-            famWeekly > famOnce
-        )
+    fun testPartialOverlapScoresProportionally() {
+        // History covers only the southern half of the candidate road.
+        val history = line(53.0, -2.0, 0.00045, 0.0, 50)
+        val hm = RideHeatmap.build(listOf(PolylineUtils.encodePolyline(history)))
+        val candidate = line(53.0, -2.0, 0.00045, 0.0, 100)
+        val fam = hm.familiarity(candidate)
+        assertTrue("Half-overlapping road should score near 0.5, got $fam", fam > 0.35 && fam < 0.65)
     }
 
     @Test
