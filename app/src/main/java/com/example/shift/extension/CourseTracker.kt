@@ -51,7 +51,16 @@ data class TrackingState(
     /** Seconds back to the rider one place ahead. Null when leading. */
     val gapAheadSeconds: Double? = null,
     /** Seconds of advantage over the rider one place behind. Null when last. */
-    val gapBehindSeconds: Double? = null
+    val gapBehindSeconds: Double? = null,
+    /** Gap to every ghost in the field, for the full-screen leaderboard. */
+    val ghostGaps: List<GhostGap> = emptyList(),
+    /** Nearest segment start ahead of the rider, when within announcement range. */
+    val upcoming: UpcomingSegment? = null
+)
+
+data class UpcomingSegment(
+    val courseName: String,
+    val distanceMeters: Double
 )
 
 
@@ -80,6 +89,8 @@ class CourseTracker(
          * rider has seen it.
          */
         private const val FINISH_HOLD_MS = 10_000L
+        /** Announce an approaching segment start within this range. */
+        private const val UPCOMING_RANGE_M = 1_000.0
 
         fun selectRepresentativeGhosts(matches: List<CourseMatch>): List<CourseMatch> {
             if (matches.isEmpty()) return emptyList()
@@ -236,9 +247,15 @@ class CourseTracker(
         val course = activeCourse
         if (course == null) {
             // ── Not currently on a segment — check if we entered one ──
+            var nearestName: String? = null
+            var nearestDist = UPCOMING_RANGE_M
             for (c in courses) {
                 if (c.encodedPolyline == null) continue
                 val distToStart = haversineMeters(lat, lng, c.startLat, c.startLng)
+                if (distToStart < nearestDist) {
+                    nearestDist = distToStart
+                    nearestName = c.name
+                }
                 if (distToStart < START_RADIUS_M) {
                     Log.i(TAG, "Entered segment '${c.name}' (${distToStart.toInt()}m from start)")
                     activeCourse = c
@@ -265,7 +282,11 @@ class CourseTracker(
                 }
             }
             activeGhostSpecs = emptyList()
-            _state.value = TrackingState() // Idle
+            // Idle, but announce a nearby segment start so the drawer can show its
+            // approach chip — the Climber pattern of a tab peeking before the event.
+            _state.value = TrackingState(
+                upcoming = nearestName?.let { UpcomingSegment(it, nearestDist) }
+            )
         } else {
 
             // ── Active on a segment ─────────────────────────────────────
@@ -371,6 +392,7 @@ class CourseTracker(
                 fieldSize = if (gaps.isEmpty()) 0 else gaps.size + 1,
                 gapAheadSeconds = gapAhead,
                 gapBehindSeconds = gapBehind,
+                ghostGaps = gaps,
                 activeCourseId = course.id,
                 courseName = course.name,
                 distanceRemainingMeters = distanceRemaining,

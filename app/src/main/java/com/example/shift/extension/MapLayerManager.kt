@@ -24,6 +24,13 @@ class MapLayerManager(
         private const val TAG = "MapLayerManager"
         private const val POLYLINE_ID = "shift-seg"
         private const val GHOST_SYMBOL_ID = "shift-ghost"
+
+        /**
+         * Deliberately NOT orange: the Karoo draws its own route arrows in orange
+         * (#FF8C00-ish) and we cannot restyle first-party map rendering, so the
+         * segment line uses a colour nothing else on the map uses.
+         */
+        private const val SEGMENT_COLOR = "#D500F9"
     }
 
     private var mapEmitter: Emitter<MapEffect>? = null
@@ -74,12 +81,11 @@ class MapLayerManager(
         val polyline = state.activeEncodedPolyline
         if (!polyline.isNullOrBlank()) {
             Log.i(TAG, "Dispatching ShowPolyline for segment '${state.activeCourseId}'")
-            val orangeColor = Color.parseColor("#FF8C00")
             mapEmitter?.onNext(
                 ShowPolyline(
                     id = POLYLINE_ID,
                     encodedPolyline = polyline,
-                    color = orangeColor,
+                    color = Color.parseColor(SEGMENT_COLOR),
                     width = 6
                 )
             )
