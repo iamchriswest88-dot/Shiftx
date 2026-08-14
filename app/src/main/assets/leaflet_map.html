@@ -47,10 +47,17 @@
         // happens whenever the activity drawer is dragged.
         var lastBounds = null;
 
-        function refit() {
+        // bottomPad: CSS pixels of map hidden behind the app drawer. The route is
+        // fitted into the visible strip above it — the map view never resizes,
+        // only the framing changes.
+        function refit(bottomPad) {
             map.invalidateSize();
             if (lastBounds && lastBounds.isValid()) {
-                map.fitBounds(lastBounds, {padding: [30, 30]});
+                var pad = (typeof bottomPad === 'number' && isFinite(bottomPad) && bottomPad > 0) ? bottomPad : 0;
+                map.fitBounds(lastBounds, {
+                    paddingTopLeft: [30, 30],
+                    paddingBottomRight: [30, 30 + pad]
+                });
             }
         }
         var courseLayer = L.layerGroup().addTo(map);

@@ -513,25 +513,29 @@ fun MapScreen(
             },
             content = { paddingValues ->
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                    // Shrink the map to whatever the sheet leaves visible, so an open
-                    // drawer scales the route down instead of covering half of it.
+                    // The map view itself stays full-screen — resizing it looked like
+                    // the map shrinking. Instead the ROUTE is re-framed: while the
+                    // drawer is up it zooms out to fit the whole course in the strip
+                    // above the sheet, and expands again as the drawer drops.
                     // requireOffset throws before first layout, hence the guard.
+                    val density = LocalDensity.current.density
                     val containerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
                     val sheetTopPx = runCatching { scaffoldState.bottomSheetState.requireOffset() }
                         .getOrDefault(containerHeightPx)
-                    val mapBottomInset = with(LocalDensity.current) {
-                        (containerHeightPx - sheetTopPx).coerceAtLeast(0f).toDp()
-                    }
+                    // Leaflet padding is in CSS pixels, not device pixels.
+                    val sheetOverlapCssPx =
+                        ((containerHeightPx - sheetTopPx).coerceAtLeast(0f) / density).toInt()
 
-                    // Re-frame the route once the size settles, otherwise Leaflet keeps
-                    // the old viewport and simply crops.
                     var mapView by remember { mutableStateOf<WebView?>(null) }
-                    LaunchedEffect(mapBottomInset) {
+                    LaunchedEffect(sheetOverlapCssPx) {
                         kotlinx.coroutines.delay(120)
-                        mapView?.evaluateJavascript("if (typeof refit === 'function') refit();", null)
+                        mapView?.evaluateJavascript(
+                            "if (typeof refit === 'function') refit($sheetOverlapCssPx);",
+                            null
+                        )
                     }
 
-                    Box(modifier = Modifier.fillMaxSize().padding(bottom = mapBottomInset)) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                     AndroidView(
                         factory = { ctx ->
                             WebView(ctx).apply {
