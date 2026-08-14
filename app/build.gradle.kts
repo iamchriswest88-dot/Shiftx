@@ -53,6 +53,13 @@ android {
         }
     }
     
+    lint {
+        // lintVital runs on release builds only and treats this as fatal.
+        // It is a Google Play distribution rule; this app is sideloaded from
+        // GitHub Releases and never published to Play, so it does not apply.
+        disable += "ExpiredTargetSdkVersion"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
