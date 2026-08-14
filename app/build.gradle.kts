@@ -28,6 +28,9 @@ android {
         versionName = (project.findProperty("versionName") as String?) ?: "1.0-dev"
 
         buildConfigField("String", "GEMINI_API_KEY", "\"${localProperties.getProperty("GEMINI_API_KEY", "")}\"")
+        // Owner's free-tier OpenRouteService key, baked in deliberately so the
+        // route planner works out of the box; a key in Settings overrides it.
+        buildConfigField("String", "ORS_API_KEY", "\"${localProperties.getProperty("ORS_API_KEY", "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjE3NTJkMDU1NjZiOTRiMDZiY2RjMTZjMmI3MmVhZDkxIiwiaCI6Im11cm11cjY0In0=")}\"")
     }
 
     // Checked-in key so every build shares one signing identity: updates install

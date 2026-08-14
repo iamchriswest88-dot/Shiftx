@@ -63,8 +63,11 @@ class RouteCreatorViewModel(
             _statusMessage.value = "Generating route..."
             _generatedRoute.value = null
 
-            val apiKey = settingsManager.orsApiKeyFlow.first()
-            if (apiKey.isNullOrBlank()) {
+            // Settings key wins; otherwise the baked-in owner key — the same
+            // two-tier pattern the Gemini key uses.
+            val savedKey = settingsManager.orsApiKeyFlow.first()
+            val apiKey = if (savedKey.isNullOrBlank()) com.example.shift.BuildConfig.ORS_API_KEY else savedKey
+            if (apiKey.isBlank()) {
                 _errorMessage.value = "Add your OpenRouteService API key in Settings (free at openrouteservice.org)"
                 _isGenerating.value = false
                 _statusMessage.value = ""
