@@ -30,6 +30,9 @@ class RouteCreatorViewModel(
     private val _targetDistanceMiles = MutableStateFlow(20f)
     val targetDistanceMiles: StateFlow<Float> = _targetDistanceMiles
 
+    private val _terrain = MutableStateFlow(com.example.shift.data.TerrainPreference.ROLLING)
+    val terrain: StateFlow<com.example.shift.data.TerrainPreference> = _terrain
+
     private val _generatedRoute = MutableStateFlow<LoopRouteResult?>(null)
     val generatedRoute: StateFlow<LoopRouteResult?> = _generatedRoute
 
@@ -51,6 +54,12 @@ class RouteCreatorViewModel(
 
     fun setTargetDistance(miles: Float) {
         _targetDistanceMiles.value = miles
+    }
+
+    fun setTerrain(pref: com.example.shift.data.TerrainPreference) {
+        _terrain.value = pref
+        // A different terrain wish means the current loop no longer answers it.
+        _generatedRoute.value = null
     }
 
     fun generateRoute() {
@@ -82,6 +91,7 @@ class RouteCreatorViewModel(
                     startLat = lat,
                     startLng = lng,
                     targetDistanceMeters = distanceMeters.toDouble(),
+                    terrain = _terrain.value,
                     onStatusUpdate = { status -> _statusMessage.value = status }
                 )
 

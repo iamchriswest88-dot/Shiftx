@@ -38,6 +38,7 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
     val startLat by viewModel.startLat.collectAsState()
     val startLng by viewModel.startLng.collectAsState()
     val targetDistanceMiles by viewModel.targetDistanceMiles.collectAsState()
+    val terrain by viewModel.terrain.collectAsState()
     val generatedRoute by viewModel.generatedRoute.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
@@ -181,6 +182,31 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
+                    // Terrain preference — steers ORS's steepness band and the
+                    // candidate scoring toward flatter or hillier loops.
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        com.example.shift.data.TerrainPreference.entries.forEach { pref ->
+                            val selected = terrain == pref
+                            val label = when (pref) {
+                                com.example.shift.data.TerrainPreference.FLAT -> "Flat"
+                                com.example.shift.data.TerrainPreference.ROLLING -> "Rolling"
+                                com.example.shift.data.TerrainPreference.HILLY -> "Hilly"
+                            }
+                            FilterChip(
+                                selected = selected,
+                                onClick = { viewModel.setTerrain(pref) },
+                                label = { Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFFFFC700),
+                                    selectedLabelColor = Color(0xFF0F1417)
+                                )
+                            )
+                        }
+                    }
+
                     Text(
                         "Target Distance: ${targetDistanceMiles.toInt()} mi",
                         style = MaterialTheme.typography.titleMedium,
@@ -229,9 +255,18 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    "Est. time: ${route.durationSeconds.toInt() / 60} min",
+                                    "Est. time: ${route.durationSeconds.toInt() / 60} min · ↗ %,.0f ft".format(route.ascentMeters * 3.28084),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                // The tournament's own verdict on retracing —
+                                // under 2% is a clean loop.
+                                Text(
+                                    if (route.retraceFraction < 0.02) "Clean loop — no doubling back"
+                                    else "Doubles back for %.0f%% of the route".format(route.retraceFraction * 100),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (route.retraceFraction < 0.02) Color(0xFF3E8E4E)
+                                        else MaterialTheme.colorScheme.error
                                 )
                             }
                             Row(

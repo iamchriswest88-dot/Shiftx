@@ -15,8 +15,18 @@ data class LoopRouteResult(
     val distanceMeters: Double,
     val durationSeconds: Double,
     val hadSpurWarning: Boolean = false,
-    val spurCoordinates: List<Pair<Double, Double>>? = null
+    val spurCoordinates: List<Pair<Double, Double>>? = null,
+    val ascentMeters: Double = 0.0,
+    /** Fraction of the route riding a corridor it already rode the other way. */
+    val retraceFraction: Double = 0.0
 )
+
+/** Rider's terrain wish, mapped to ORS steepness bands and to candidate scoring. */
+enum class TerrainPreference(val steepnessDifficulty: Int) {
+    FLAT(0),
+    ROLLING(1),
+    HILLY(3)
+}
 
 data class SpurDetectionResult(
     val hasSpur: Boolean,
@@ -236,6 +246,94 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
     }
 
     /**
+     * Fraction of the route spent retracing its own corridor in the opposite
+     * direction — the precise signature of an out-and-back spur.
+     *
+     * The route is resampled every 20m onto a 30m grid; a sample that lands in a
+     * cell an earlier part of THIS route crossed heading the opposite way (within
+     * ±45°) is a retrace. A perpendicular self-crossing — the stick of a lollipop
+     * route crossing its own loop — does not trigger it, which is what the older
+     * proximity-only spur check could not distinguish.
+     *
+     * Unlike pruning, this scores the whole route including the classic stem at
+     * the start/finish, which the pruner's keep-85% guard deliberately exempts.
+     */
+    fun retraceFraction(points: List<Pair<Double, Double>>): Double {
+        if (points.size < 3) return 0.0
+        val samples = interpolatePolyline(points, 20.0)
+        if (samples.size < 6) return 0.0
+
+        val cellSizeM = 30.0
+        val latRef = Math.toRadians(samples[0].first)
+        val mPerDegLat = 110_540.0
+        val mPerDegLng = 111_320.0 * cos(latRef)
+
+        // cell -> sample indices that crossed it, for bearing comparison
+        val visited = HashMap<Long, MutableList<Int>>()
+        val bearings = DoubleArray(samples.size)
+        for (i in samples.indices) {
+            val a = samples[max(0, i - 1)]
+            val b = samples[min(samples.size - 1, i + 1)]
+            bearings[i] = Math.toDegrees(
+                atan2((b.second - a.second) * mPerDegLng, (b.first - a.first) * mPerDegLat)
+            )
+        }
+
+        fun cellKey(cx: Int, cy: Int): Long = (cx.toLong() shl 32) or (cy.toLong() and 0xFFFFFFFFL)
+
+        var retraced = 0
+        for (i in samples.indices) {
+            val cx = floor(samples[i].second * mPerDegLng / cellSizeM).toInt()
+            val cy = floor(samples[i].first * mPerDegLat / cellSizeM).toInt()
+
+            var isRetrace = false
+            outer@ for (dx in -1..1) {
+                for (dy in -1..1) {
+                    val earlier = visited[cellKey(cx + dx, cy + dy)] ?: continue
+                    for (j in earlier) {
+                        if (i - j < 5) continue // ≥100m apart along the route
+                        var diff = abs(bearings[i] - bearings[j]) % 360.0
+                        if (diff > 180.0) diff = 360.0 - diff
+                        if (diff > 135.0) { // within ±45° of straight back
+                            isRetrace = true
+                            break@outer
+                        }
+                    }
+                }
+            }
+            if (isRetrace) retraced++
+            visited.getOrPut(cellKey(cx, cy)) { mutableListOf() }.add(i)
+        }
+        return retraced.toDouble() / samples.size
+    }
+
+    /**
+     * Isoperimetric roundness Q = 4πA/P²: 1.0 for a circle, ~0.6 for a square
+     * loop, near 0 for an out-and-back whose enclosed area is nothing.
+     */
+    fun roundness(points: List<Pair<Double, Double>>): Double {
+        if (points.size < 4) return 0.0
+        val latRef = Math.toRadians(points[0].first)
+        val mPerDegLat = 110_540.0
+        val mPerDegLng = 111_320.0 * cos(latRef)
+
+        var area = 0.0
+        var perimeter = 0.0
+        for (i in points.indices) {
+            val p = points[i]
+            val q = points[(i + 1) % points.size]
+            val px = p.second * mPerDegLng
+            val py = p.first * mPerDegLat
+            val qx = q.second * mPerDegLng
+            val qy = q.first * mPerDegLat
+            area += px * qy - qx * py
+            perimeter += sqrt((qx - px) * (qx - px) + (qy - py) * (qy - py))
+        }
+        if (perimeter <= 0.0) return 0.0
+        return (4.0 * Math.PI * abs(area) / 2.0) / (perimeter * perimeter)
+    }
+
+    /**
      * Actively trace the route geometry and surgically snip off out-and-back spurs.
      */
     fun pruneSpurs(points: List<Pair<Double, Double>>): List<Pair<Double, Double>> {
@@ -312,95 +410,109 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
     }
 
 
+    /**
+     * Candidate tournament. The previous logic returned the FIRST candidate
+     * inside the distance tolerance, spurs or not — and its pruner deliberately
+     * exempts the commonest spur of all, the out-and-back stem at the start,
+     * whose overlap pair spans nearly the whole route. Now every candidate is
+     * scored (retracing weighted heaviest, then surface, distance fit, terrain
+     * match, roundness) and only the best of the field is returned, ending
+     * early once a spotless loop exists to spare the API quota.
+     */
     suspend fun generateLoopRoute(
         apiKey: String,
         startLat: Double, startLng: Double,
         targetDistanceMeters: Double,
+        terrain: TerrainPreference = TerrainPreference.ROLLING,
         onStatusUpdate: (String) -> Unit = {}
     ): LoopRouteResult? = withContext(Dispatchers.Default) {
-        val correctionFactors = listOf(1.0, 0.82, 0.75, 0.68)
+        // ORS treats round-trip length as a suggestion and usually overshoots;
+        // pairing seeds with correction factors keeps the field near target.
+        val correctionFactors = listOf(1.0, 0.82, 1.0, 0.82, 0.75, 1.0, 0.82, 0.68)
         val toleranceMeters = max(500.0, targetDistanceMeters * 0.1)
 
-        var bestResult: LoopRouteResult? = null
-        var bestDistanceDiff = Double.MAX_VALUE
-        var bestUnpavedPenalty = Double.MAX_VALUE
+        var best: LoopRouteResult? = null
+        var bestScore = Double.MAX_VALUE
 
-        var attemptCount = 0
+        for ((attemptIdx, factor) in correctionFactors.withIndex()) {
+            onStatusUpdate("Trying loops (${attemptIdx + 1}/${correctionFactors.size})...")
+            val seed = Random.nextInt(100000)
 
-        for (factor in correctionFactors) {
-            val correctedDistance = targetDistanceMeters * factor
-            
-            // Try up to 2 times for each factor to avoid spurs
-            for (retry in 0..1) {
-                attemptCount++
-                onStatusUpdate("Generating route (attempt $attemptCount)...")
-                
-                val seed = Random.nextInt(100000)
+            val routeResult = orsClient.getRoundTripRoute(
+                apiKey, startLng, startLat,
+                targetDistanceMeters * factor, seed, terrain.steepnessDifficulty
+            ) ?: continue
 
-                val routeResult = orsClient.getRoundTripRoute(apiKey, startLng, startLat, correctedDistance, seed)
-                if (routeResult != null) {
-                    onStatusUpdate("Checking for spurs and unpaved roads...")
-                    val decodedPoints = PolylineUtils.decodePolyline(routeResult.encodedPolyline)
-                    val spurCheck = detectSpurs(decodedPoints)
-                    
-                    val hasUnpaved = routeResult.unpavedDistanceMeters > (routeResult.distanceMeters * 0.02) // Allow max 2% unpaved
+            val decoded = PolylineUtils.decodePolyline(routeResult.encodedPolyline)
+            if (decoded.size < 4) continue
 
-                    var finalPoints = decodedPoints
-                    var finalDistance = routeResult.distanceMeters
-                    var finalDuration = routeResult.durationSeconds
-                    var prunedSpurs = false
-
-                    if (spurCheck.hasSpur) {
-                        onStatusUpdate("Pruning detected spurs...")
-                        val prunedPoints = pruneSpurs(decodedPoints)
-                        if (prunedPoints.size < decodedPoints.size) {
-                            var newDistance = 0.0
-                            for (i in 1 until prunedPoints.size) {
-                                newDistance += haversineDistance(
-                                    prunedPoints[i-1].first, prunedPoints[i-1].second,
-                                    prunedPoints[i].first, prunedPoints[i].second
-                                )
-                            }
-                            finalDistance = newDistance
-                            finalDuration = routeResult.durationSeconds * (newDistance / routeResult.distanceMeters)
-                            finalPoints = prunedPoints
-                            prunedSpurs = true
-                        }
+            // Snip clean mid-route spurs first; scoring judges what pruning
+            // cannot fix (chiefly the start/finish stem).
+            var pts = decoded
+            var distance = routeResult.distanceMeters
+            var duration = routeResult.durationSeconds
+            if (detectSpurs(decoded).hasSpur) {
+                val pruned = pruneSpurs(decoded)
+                if (pruned.size < decoded.size) {
+                    var d = 0.0
+                    for (i in 1 until pruned.size) {
+                        d += haversineDistance(
+                            pruned[i - 1].first, pruned[i - 1].second,
+                            pruned[i].first, pruned[i].second
+                        )
                     }
-
-                    val result = LoopRouteResult(
-                        encodedPolyline = if (prunedSpurs) PolylineUtils.encodePolyline(finalPoints) else routeResult.encodedPolyline,
-                        coordinates = finalPoints,
-                        distanceMeters = finalDistance,
-                        durationSeconds = finalDuration,
-                        hadSpurWarning = hasUnpaved, // Spurs are pruned, so only unpaved roads trigger the warning
-                        spurCoordinates = null
-                    )
-
-                    val distanceDiff = abs(finalDistance - targetDistanceMeters)
-
-                    if (!hasUnpaved) {
-                        if (distanceDiff <= toleranceMeters) {
-                            return@withContext result // Perfect paved route!
-                        }
-                        if (distanceDiff < bestDistanceDiff) {
-                            bestDistanceDiff = distanceDiff
-                            bestResult = result
-                            bestUnpavedPenalty = 0.0
-                        }
-                    } else {
-                        // Track fallback route based on the least amount of unpaved road
-                        val unpavedPenalty = routeResult.unpavedDistanceMeters
-                        println("Attempt $attemptCount found unpaved roads: ${routeResult.unpavedDistanceMeters}m")
-                        if (bestResult == null || unpavedPenalty < bestUnpavedPenalty) {
-                            bestResult = result
-                            bestUnpavedPenalty = unpavedPenalty
-                        }
-                    }
+                    if (d > 0.0 && distance > 0.0) duration *= d / distance
+                    distance = d
+                    pts = pruned
                 }
             }
+
+            val retrace = retraceFraction(pts)
+            val round = roundness(pts)
+            val unpavedFrac =
+                if (routeResult.distanceMeters > 0) routeResult.unpavedDistanceMeters / routeResult.distanceMeters else 0.0
+            val distFit = abs(distance - targetDistanceMeters) / targetDistanceMeters
+            val climbPerKm = if (distance > 0) routeResult.ascentMeters / (distance / 1000.0) else 0.0
+            val terrainPenalty = when (terrain) {
+                TerrainPreference.FLAT -> max(0.0, (climbPerKm - 6.0) / 20.0)
+                TerrainPreference.ROLLING -> 0.0
+                TerrainPreference.HILLY -> max(0.0, (12.0 - climbPerKm) / 20.0)
+            }
+
+            // Retracing dominates: a clean loop 15% off target beats a
+            // spur-ridden one bang on distance.
+            val score = 4.0 * retrace +
+                2.0 * min(1.0, unpavedFrac * 10.0) +
+                distFit +
+                terrainPenalty +
+                0.3 * (1.0 - min(1.0, round / 0.55))
+
+            val candidate = LoopRouteResult(
+                encodedPolyline = PolylineUtils.encodePolyline(pts),
+                coordinates = pts,
+                distanceMeters = distance,
+                durationSeconds = duration,
+                hadSpurWarning = unpavedFrac > 0.02,
+                spurCoordinates = null,
+                ascentMeters = routeResult.ascentMeters,
+                retraceFraction = retrace
+            )
+
+            if (score < bestScore) {
+                bestScore = score
+                best = candidate
+            }
+
+            // Field of at least three, then stop as soon as the leader is
+            // spotless: no measurable retracing, on distance, paved.
+            val leader = best
+            if (attemptIdx >= 2 && leader != null &&
+                leader.retraceFraction < 0.02 &&
+                abs(leader.distanceMeters - targetDistanceMeters) <= toleranceMeters &&
+                !leader.hadSpurWarning
+            ) break
         }
-        
-        return@withContext bestResult
+
+        return@withContext best
     }
 }

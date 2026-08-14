@@ -12,11 +12,46 @@ data class RouteResult(
     val encodedPolyline: String,
     val distanceMeters: Double,
     val durationSeconds: Double,
-    val unpavedDistanceMeters: Double = 0.0
+    val unpavedDistanceMeters: Double = 0.0,
+    val ascentMeters: Double = 0.0
 )
 
 class OpenRouteServiceClient {
     private val client = OkHttpClient()
+
+    /**
+     * With elevation=true ORS encodes THREE values per point (lat, lng, ele) in
+     * the polyline. The app's decoder is two-dimensional and would mis-decode it
+     * into garbage coordinates, so the third dimension is stripped here and the
+     * rest of the app receives the 2D encoding it has always expected.
+     */
+    private fun stripElevationDimension(encoded3d: String): String {
+        var index = 0
+        var lat = 0
+        var lng = 0
+        var ele = 0
+        val points = mutableListOf<Pair<Double, Double>>()
+
+        fun nextVarint(): Int {
+            var result = 0
+            var shift = 0
+            var b: Int
+            do {
+                b = encoded3d[index++].code - 63
+                result = result or ((b and 0x1f) shl shift)
+                shift += 5
+            } while (b >= 0x20)
+            return if (result and 1 != 0) (result shr 1).inv() else result shr 1
+        }
+
+        while (index < encoded3d.length) {
+            lat += nextVarint()
+            lng += nextVarint()
+            ele += nextVarint()
+            points.add(Pair(lat / 1e5, lng / 1e5))
+        }
+        return com.example.shift.utils.PolylineUtils.encodePolyline(points)
+    }
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun getRoute(apiKey: String, coordinates: List<Pair<Double, Double>>): RouteResult? {
@@ -88,11 +123,23 @@ class OpenRouteServiceClient {
         }
     }
 
-    suspend fun getRoundTripRoute(apiKey: String, startLng: Double, startLat: Double, lengthMeters: Double, seed: Int): RouteResult? {
+    /**
+     * [steepnessDifficulty] is ORS's 0-3 rider band (0 novice … 3 pro) — the one
+     * hill-avoidance knob its cycling profiles actually honour. Low values steer
+     * the route around climbs, high values stop avoiding them.
+     */
+    suspend fun getRoundTripRoute(
+        apiKey: String,
+        startLng: Double,
+        startLat: Double,
+        lengthMeters: Double,
+        seed: Int,
+        steepnessDifficulty: Int = 2
+    ): RouteResult? {
         return withContext(Dispatchers.IO) {
             try {
                 val url = "https://api.openrouteservice.org/v2/directions/cycling-road/json"
-                
+
                 val coordsJson = buildJsonArray {
                     add(buildJsonArray {
                         add(startLng)
@@ -103,6 +150,8 @@ class OpenRouteServiceClient {
                 val requestBodyJson = buildJsonObject {
                     put("coordinates", coordsJson)
                     put("preference", "recommended")
+                    // elevation=true adds summary.ascent, which terrain scoring needs.
+                    put("elevation", true)
                     put("extra_info", buildJsonArray { add("surface") })
                     put("options", buildJsonObject {
                         put("round_trip", buildJsonObject {
@@ -119,7 +168,7 @@ class OpenRouteServiceClient {
                         // that never existed.
                         put("profile_params", buildJsonObject {
                             put("weightings", buildJsonObject {
-                                put("steepness_difficulty", 2)
+                                put("steepness_difficulty", steepnessDifficulty.coerceIn(0, 3))
                             })
                         })
                     })
@@ -147,6 +196,7 @@ class OpenRouteServiceClient {
                             val summary = route["summary"]?.jsonObject
                             val distance = summary?.get("distance")?.jsonPrimitive?.doubleOrNull ?: 0.0
                             val duration = summary?.get("duration")?.jsonPrimitive?.doubleOrNull ?: 0.0
+                            val ascent = summary?.get("ascent")?.jsonPrimitive?.doubleOrNull ?: 0.0
 
                             val extras = route["extras"]?.jsonObject
                             val surface = extras?.get("surface")?.jsonObject
@@ -166,7 +216,10 @@ class OpenRouteServiceClient {
                             }
 
                             if (geometry != null) {
-                                return@withContext RouteResult(geometry, distance, duration, unpavedDistance)
+                                return@withContext RouteResult(
+                                    stripElevationDimension(geometry),
+                                    distance, duration, unpavedDistance, ascent
+                                )
                             }
                         }
                     }
