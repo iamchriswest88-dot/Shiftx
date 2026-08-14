@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import com.example.shift.ShiftApplication
 
+import com.example.shift.data.SettingsManager
 import com.example.shift.data.model.Exercise
 import com.example.shift.data.model.Step
 import com.example.shift.data.model.Workout
@@ -54,6 +55,7 @@ class BuilderViewModel(
     private val existingWorkoutId: String?,
     private val workoutRepo: WorkoutRepository,
     private val exerciseRepo: ExerciseRepository,
+    private val settingsManager: SettingsManager,
 ) : ViewModel() {
 
     var workoutName by mutableStateOf("")
@@ -178,7 +180,8 @@ class BuilderViewModel(
         
         viewModelScope.launch {
             try {
-                val apiKey = com.example.shift.BuildConfig.GEMINI_API_KEY.trim()
+                val flowKey = settingsManager.geminiApiKeyFlow.first()?.trim() ?: ""
+                val apiKey = if (flowKey.isNotEmpty()) flowKey else com.example.shift.BuildConfig.GEMINI_API_KEY.trim()
                 val exList = exercises.value.filter { it.id != currentEx.id && it.area == currentEx.area }
                 
                 if (exList.isEmpty() || apiKey.isBlank() || apiKey == "YOUR_API_KEY_HERE") {
@@ -242,6 +245,7 @@ class BuilderViewModel(
                     existingWorkoutId = workoutId,
                     workoutRepo       = WorkoutRepository(db.workoutDao(), db.stepDao()),
                     exerciseRepo      = ExerciseRepository(db.exerciseDao(), db.exerciseLogDao()),
+                    settingsManager   = SettingsManager(app),
                 )
             }
         }

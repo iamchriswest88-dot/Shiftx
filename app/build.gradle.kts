@@ -22,16 +22,34 @@ android {
         applicationId = "com.example.shift"
         minSdk = 26
         targetSdk = 30
-        versionCode = 1
-        versionName = "1.0"
-        
+        // CI passes -PversionCode/-PversionName derived from the release tag so each
+        // build is a real upgrade. Local builds fall back to a dev version.
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0-dev"
+
         buildConfigField("String", "GEMINI_API_KEY", "\"${localProperties.getProperty("GEMINI_API_KEY", "")}\"")
+    }
+
+    // Checked-in key so every build shares one signing identity: updates install
+    // over each other instead of failing with INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+    // This is not a secret — it exists to keep app data across upgrades.
+    signingConfigs {
+        create("shiftx") {
+            storeFile = file("shiftx.jks")
+            storePassword = "shiftx123"
+            keyAlias = "shiftx"
+            keyPassword = "shiftx123"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("shiftx")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("shiftx")
         }
     }
     

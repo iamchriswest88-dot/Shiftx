@@ -256,7 +256,8 @@ class RunnerViewModel(
         _state.update { it.copy(isInstructionLoading = true, exerciseInstruction = "") }
         viewModelScope.launch {
             try {
-                val apiKey = com.example.shift.BuildConfig.GEMINI_API_KEY.trim()
+                val flowKey = settingsManager.geminiApiKeyFlow.first()?.trim() ?: ""
+                val apiKey = if (flowKey.isNotEmpty()) flowKey else com.example.shift.BuildConfig.GEMINI_API_KEY.trim()
                 if (apiKey.isBlank() || apiKey == "YOUR_API_KEY_HERE") {
                     instructionCache[exerciseName] = "Mock instruction for $exerciseName"
                     _state.update { it.copy(exerciseInstruction = instructionCache[exerciseName] ?: "", isInstructionLoading = false) }

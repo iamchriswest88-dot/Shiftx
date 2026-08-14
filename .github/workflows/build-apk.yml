@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 1.9 — the v-prefixed tag is created for you"
+        required: true
+        type: string
 
 jobs:
   build:
@@ -15,6 +20,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            NAME="${{ inputs.version }}"
+          else
+            NAME="${GITHUB_REF_NAME}"
+          fi
+          NAME="${NAME#v}"
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${NAME}" >> "$GITHUB_OUTPUT"
+          # Run number is monotonic, so every build is an upgrade in Android's eyes.
+          echo "code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -28,11 +49,14 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon
+      - name: Build release APK
+        run: |
+          ./gradlew :app:assembleRelease --no-daemon \
+            -PversionCode=${{ steps.version.outputs.code }} \
+            -PversionName=${{ steps.version.outputs.name }}
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk shiftx.apk
+        run: cp app/build/outputs/apk/release/app-release.apk shiftx.apk
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -41,7 +65,17 @@ jobs:
           path: shiftx.apk
 
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ShiftX ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
           files: shiftx.apk
+          body: |
+            Install straight to your phone:
+
+            **https://github.com/${{ github.repository }}/releases/latest/download/shiftx.apk**
+
+            Version `${{ steps.version.outputs.name }}` (versionCode `${{ steps.version.outputs.code }}`).
+            Installs over any previous build — your workouts, segments and leaderboards are kept.
