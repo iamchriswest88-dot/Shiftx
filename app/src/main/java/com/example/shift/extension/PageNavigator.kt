@@ -2,21 +2,25 @@ package com.example.shift.extension
 
 import android.content.Context
 import android.graphics.Color
-import android.util.Log
 import com.example.shift.R
 import com.example.shift.data.SettingsManager
 import io.hammerhead.karooext.KarooSystemService
-import io.hammerhead.karooext.models.ActiveRidePage
 import io.hammerhead.karooext.models.InRideAlert
-import io.hammerhead.karooext.models.PerformHardwareAction
-import io.hammerhead.karooext.models.RideProfile
+import io.hammerhead.karooext.models.ShowMapPage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+/**
+ * In-ride announcements for segment entry, finish and abandon.
+ *
+ * Race mode lives on the Karoo's own map page now (segment polyline + ghost via
+ * MapLayerManager, numbers via the race-strip field), so on entry this simply switches
+ * to the map page instead of the old approach of blind-pressing the page button up to
+ * eight times hunting for a full-page data field that no longer exists.
+ */
 class PageNavigator(
     private val context: Context,
     private val karooSystem: KarooSystemService,
@@ -29,9 +33,6 @@ class PageNavigator(
     private val settingsManager = SettingsManager(context)
     private var autoOpenEnabled = true
 
-    private var currentPage: RideProfile.Page? = null
-    private var returnPage: RideProfile.Page? = null
-
     private var previousCourseId: String? = null
 
     fun start(scope: CoroutineScope) {
@@ -42,13 +43,6 @@ class PageNavigator(
             }
         }
 
-        // Collect ActiveRidePage events
-        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
-            karooSystem.consumerFlow<ActiveRidePage>().collect { event ->
-                currentPage = event.page
-            }
-        }
-
         // Observe course tracker state for gate entry, finish, and abandon
         scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             tracker.state.collectLatest { state ->
@@ -56,13 +50,13 @@ class PageNavigator(
 
                 if (previousCourseId == null && currentCourseId != null) {
                     // ── Gate Entry ──
-                    onGateEntry(scope, state)
+                    onGateEntry(state)
                 } else if (previousCourseId != null && currentCourseId == null) {
                     // ── Gate Exit (Finish or Abandon) ──
                     if (state.finished != null) {
-                        onFinish(scope, state, state.finished)
+                        onFinish(state.finished)
                     } else {
-                        onAbandon(scope)
+                        onAbandon()
                     }
                 }
 
@@ -71,98 +65,58 @@ class PageNavigator(
         }
     }
 
-    private fun isSegmentPageActive(): Boolean {
-        val page = currentPage ?: return false
-        return page.elements.any { element ->
-            element.dataTypeId == "segment-page" || element.dataTypeId.endsWith("segment-page")
-        }
-    }
-
-    private fun onGateEntry(scope: CoroutineScope, state: TrackingState) {
+    private fun onGateEntry(state: TrackingState) {
         val courseName = state.courseName ?: "Segment"
         val prStr = if (state.prTimeSeconds != null) formatMmSs(state.prTimeSeconds.toDouble()) else "--:--"
 
-        val alert = InRideAlert(
-            id = "shift-seg-enter",
-            icon = R.drawable.ic_extension,
-            title = courseName,
-            detail = "PR $prStr",
-            autoDismissMs = 3000L,
-            backgroundColor = Color.parseColor("#004D25"), // Dark Green
-            textColor = Color.WHITE
+        karooSystem.dispatch(
+            InRideAlert(
+                id = "shift-seg-enter",
+                icon = R.drawable.ic_extension,
+                title = courseName,
+                detail = "PR $prStr",
+                autoDismissMs = 3000L,
+                backgroundColor = Color.parseColor("#004D25"), // Dark Green
+                textColor = Color.WHITE
+            )
         )
-        karooSystem.dispatch(alert)
 
-        if (!autoOpenEnabled) return
-
-        returnPage = currentPage
-
-        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
-            for (attempt in 1..8) {
-                if (isSegmentPageActive()) {
-                    Log.i(TAG, "Successfully paged to Segment Page on attempt $attempt")
-                    break
-                }
-                karooSystem.dispatch(PerformHardwareAction.BottomRightPress)
-                delay(700)
-            }
+        if (autoOpenEnabled) {
+            karooSystem.dispatch(ShowMapPage(zoom = true))
         }
     }
 
-    private fun onFinish(scope: CoroutineScope, state: TrackingState, finished: FinishResult) {
+    private fun onFinish(finished: FinishResult) {
         val timeStr = formatMmSs(finished.timeSeconds.toDouble())
         val prText = if (finished.isNewPr) " - NEW PR!" else ""
 
-        val alert = InRideAlert(
-            id = "shift-seg-finish",
-            icon = R.drawable.ic_extension,
-            title = "Segment Complete",
-            detail = "$timeStr$prText",
-            autoDismissMs = 4000L,
-            backgroundColor = Color.parseColor("#004D25"),
-            textColor = Color.WHITE
+        // The rider is already on the map page and the race strip holds the summary,
+        // so no page switching is needed here.
+        karooSystem.dispatch(
+            InRideAlert(
+                id = "shift-seg-finish",
+                icon = R.drawable.ic_extension,
+                title = "Segment Complete",
+                detail = "$timeStr$prText",
+                autoDismissMs = 4000L,
+                backgroundColor = Color.parseColor("#004D25"),
+                textColor = Color.WHITE
+            )
         )
-        karooSystem.dispatch(alert)
-
-        if (!autoOpenEnabled) return
-
-        val target = returnPage
-        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
-            delay(8000) // Hold summary on page for 8 seconds
-            if (target != null) {
-                for (attempt in 1..8) {
-                    if (currentPage == target) break
-                    karooSystem.dispatch(PerformHardwareAction.BottomRightPress)
-                    delay(700)
-                }
-            }
-        }
     }
 
-    private fun onAbandon(scope: CoroutineScope) {
-        val alert = InRideAlert(
-            id = "shift-seg-abandon",
-            icon = R.drawable.ic_extension,
-            title = "Segment Abandoned",
-            detail = "Off course",
-            autoDismissMs = 2500L,
-            backgroundColor = Color.parseColor("#4A0000"), // Dark Red
-            textColor = Color.WHITE
+    private fun onAbandon() {
+        karooSystem.dispatch(
+            InRideAlert(
+                id = "shift-seg-abandon",
+                icon = R.drawable.ic_extension,
+                title = "Segment Abandoned",
+                detail = "Off course",
+                autoDismissMs = 2500L,
+                backgroundColor = Color.parseColor("#4A0000"), // Dark Red
+                textColor = Color.WHITE
+            )
         )
-        karooSystem.dispatch(alert)
-
-        if (!autoOpenEnabled) return
-
-        val target = returnPage
-        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
-            if (target != null) {
-                for (attempt in 1..8) {
-                    if (currentPage == target) break
-                    karooSystem.dispatch(PerformHardwareAction.BottomRightPress)
-                    delay(700)
-                }
-            }
-        }
     }
 
     private fun formatMmSs(seconds: Double): String {

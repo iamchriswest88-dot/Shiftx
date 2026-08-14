@@ -18,6 +18,17 @@ data class GhostPosition(
     val finished: Boolean          // ghost has completed the segment
 )
 
+/**
+ * Time gap to one ghost at the rider's current point on the segment.
+ *
+ * Positive means the ghost reached this distance sooner and is therefore ahead;
+ * negative means the rider is ahead of it.
+ */
+data class GhostGap(
+    val rank: Int,
+    val gapSeconds: Double
+)
+
 object GhostEngine {
 
     fun positionsAt(
@@ -142,6 +153,66 @@ object GhostEngine {
         if (prRecord == null) return null
         val spec = GhostSpec(rank = 1, timeSeconds = prRecord.timeSeconds, curve = prRecord.curve)
         return positionsAt(elapsedSeconds, listOf(spec), decodedPolyline, cumDistances, totalDist).firstOrNull()
+    }
+
+    /**
+     * Seconds the rider is ahead of (negative) or behind (positive) each ghost, measured
+     * at the rider's current distance along the segment.
+     *
+     * Comparing at the same distance rather than the same time is what makes the gaps
+     * mean "how far up the road is that rider", which is what the race strip reports.
+     */
+    fun gapsAt(
+        elapsedSeconds: Double,
+        distanceCovered: Double,
+        ghosts: List<GhostSpec>,
+        totalDist: Double
+    ): List<GhostGap> {
+        if (ghosts.isEmpty() || totalDist <= 0.0) return emptyList()
+        return ghosts.mapNotNull { ghost ->
+            val ghostTime = expectedTimeFor(ghost.curve, ghost.timeSeconds, distanceCovered, totalDist)
+                ?: return@mapNotNull null
+            GhostGap(rank = ghost.rank, gapSeconds = elapsedSeconds - ghostTime)
+        }
+    }
+
+    /**
+     * Time at which a ride described by [curve] (or a constant pace over [timeSeconds]
+     * when no curve exists) passed [distanceCovered].
+     */
+    private fun expectedTimeFor(
+        curve: List<CurvePoint>?,
+        timeSeconds: Int,
+        distanceCovered: Double,
+        totalDist: Double
+    ): Double? {
+        if (timeSeconds <= 0 || totalDist <= 0.0) return null
+
+        if (curve != null && curve.size >= 2) {
+            val clampedDist = distanceCovered.coerceIn(0.0, totalDist)
+            if (clampedDist <= curve.first().dist) return curve.first().time
+            if (clampedDist >= curve.last().dist) return curve.last().time
+
+            var c1 = curve.first()
+            var c2 = curve.last()
+            for (i in 0 until curve.size - 1) {
+                if (clampedDist >= curve[i].dist && clampedDist <= curve[i + 1].dist) {
+                    c1 = curve[i]
+                    c2 = curve[i + 1]
+                    break
+                }
+            }
+            val dd = c2.dist - c1.dist
+            return if (dd > 0.0) {
+                val frac = (clampedDist - c1.dist) / dd
+                c1.time + frac * (c2.time - c1.time)
+            } else {
+                c1.time
+            }
+        }
+
+        val progressRatio = (distanceCovered / totalDist).coerceIn(0.0, 1.0)
+        return timeSeconds * progressRatio
     }
 
     fun calculateExpectedTime(

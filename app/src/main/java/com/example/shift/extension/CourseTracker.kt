@@ -43,7 +43,15 @@ data class TrackingState(
     val ghostField: List<GhostPosition> = emptyList(),
     val activePolyline: List<Pair<Double, Double>>? = null,
     val activeEncodedPolyline: String? = null,
-    val finished: FinishResult? = null
+    val finished: FinishResult? = null,
+    /** Rider's place in the field, 1 = leading. Null when there are no ghosts. */
+    val racePosition: Int? = null,
+    /** Size of the field including the rider. */
+    val fieldSize: Int = 0,
+    /** Seconds back to the rider one place ahead. Null when leading. */
+    val gapAheadSeconds: Double? = null,
+    /** Seconds of advantage over the rider one place behind. Null when last. */
+    val gapBehindSeconds: Double? = null
 )
 
 
@@ -349,7 +357,20 @@ class CourseTracker(
             )
             val prGhost = ghostField.find { it.rank == 1 }
 
+            // 8. Race position and gaps, measured at the rider's current distance so
+            // they read as "how far up the road", not "how far apart in elapsed time".
+            val gaps = GhostEngine.gapsAt(elapsedSec, distanceCovered, activeGhostSpecs, totalPolylineDist)
+            val ahead = gaps.filter { it.gapSeconds > 0.0 }
+            val behind = gaps.filter { it.gapSeconds <= 0.0 }
+            val racePosition = if (gaps.isEmpty()) null else ahead.size + 1
+            val gapAhead = ahead.minByOrNull { it.gapSeconds }?.gapSeconds
+            val gapBehind = behind.maxByOrNull { it.gapSeconds }?.gapSeconds?.let { -it }
+
             _state.value = TrackingState(
+                racePosition = racePosition,
+                fieldSize = if (gaps.isEmpty()) 0 else gaps.size + 1,
+                gapAheadSeconds = gapAhead,
+                gapBehindSeconds = gapBehind,
                 activeCourseId = course.id,
                 courseName = course.name,
                 distanceRemainingMeters = distanceRemaining,

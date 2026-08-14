@@ -20,17 +20,11 @@
         icon="@drawable/ic_extension"
         typeId="segment-distance" />
     <DataType
-        description="Full segment view: route, ghost, delta and timing"
-        displayName="Segment Page"
+        description="Position, gaps front and back, and distance remaining — sits over the map"
+        displayName="Race Strip"
         graphical="true"
         icon="@drawable/ic_extension"
-        typeId="segment-page" />
-    <DataType
-        description="Race view: full-screen map vs your top 5 times"
-        displayName="Race View"
-        graphical="true"
-        icon="@drawable/ic_extension"
-        typeId="race-view" />
+        typeId="race-strip" />
 </ExtensionInfo>
 
 
