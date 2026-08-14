@@ -259,6 +259,15 @@ class RaceDrawerView(
     }
 
     private fun drawCellRow(canvas: Canvas, w: Float, top: Float, cellHeight: Float) {
+        // The unit rides in the label so the number itself stays as large as possible.
+        // A bare value would be ambiguous, since the readout switches between km and m.
+        val remaining = state.distanceRemainingMeters
+        val toGo = when {
+            remaining == null -> "TO GO" to "--"
+            remaining >= 1000.0 -> "TO GO KM" to String.format("%.1f", remaining / 1000.0)
+            else -> "TO GO M" to remaining.roundToInt().toString()
+        }
+
         val cells = listOf(
             "POS" to run {
                 val pos = state.racePosition
@@ -266,7 +275,7 @@ class RaceDrawerView(
             },
             "AHEAD" to (state.gapAheadSeconds?.let { "+${formatGap(it)}" } ?: "--"),
             "BEHIND" to (state.gapBehindSeconds?.let { "-${formatGap(it)}" } ?: "--"),
-            "TO GO" to (state.distanceRemainingMeters?.let { formatDistance(it) } ?: "--")
+            toGo
         )
 
         val cellW = w / cells.size
@@ -283,11 +292,19 @@ class RaceDrawerView(
         }
         val divider = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#3A1F24"); strokeWidth = 1f }
 
+        val baseValueSize = valuePaint.textSize
         cells.forEachIndexed { i, (label, value) ->
             val cx = cellW * i + cellW / 2f
             canvas.drawText(label, cx, top + cellHeight * 0.3f, labelPaint)
             // The rider ahead is the one being chased, so that gap carries the accent.
             valuePaint.color = if (label == "AHEAD") ACCENT else VALUE
+            // Shrink anything that would run into its neighbour — a gap can reach
+            // "12:34" while position stays two characters.
+            valuePaint.textSize = baseValueSize
+            val maxWidth = cellW * 0.86f
+            while (valuePaint.textSize > 10f && valuePaint.measureText(value) > maxWidth) {
+                valuePaint.textSize = valuePaint.textSize - 1f
+            }
             canvas.drawText(value, cx, top + cellHeight * 0.82f, valuePaint)
             if (i > 0) canvas.drawLine(cellW * i, top + cellHeight * 0.1f, cellW * i, top + cellHeight * 0.9f, divider)
         }
