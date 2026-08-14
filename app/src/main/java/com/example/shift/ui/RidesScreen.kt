@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,9 +18,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +49,8 @@ fun RidesScreen(
     val activities by viewModel.activities.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val segmentCounts by viewModel.segmentCounts.collectAsState()
+    // Only one ride's segment results open at a time, so the list stays scannable.
+    var expandedActivityId by remember { mutableStateOf<String?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(lifecycleOwner) {
@@ -163,15 +169,141 @@ fun RidesScreen(
                         ActivityItem(
                             activity = activity,
                             segmentCount = count,
-                            onClick = { 
+                            expanded = expandedActivityId == activity.id,
+                            onClick = {
                                 onActivityClick(activity)
-                            }
+                            },
+                            onSegmentClick = if (count > 0) {
+                                {
+                                    expandedActivityId =
+                                        if (expandedActivityId == activity.id) null else activity.id
+                                }
+                            } else null
                         )
+                        if (expandedActivityId == activity.id) {
+                            SegmentResultsPanel(viewModel = viewModel, activityId = activity.id)
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * How each segment inside a ride placed against every other attempt at it.
+ *
+ * Loaded on expand rather than up front — building this for every ride in the list
+ * would read the whole match cache once per row.
+ */
+@Composable
+fun SegmentResultsPanel(viewModel: MainViewModel, activityId: String) {
+    var results by remember(activityId) { mutableStateOf<List<MainViewModel.SegmentResult>?>(null) }
+
+    LaunchedEffect(activityId) {
+        results = viewModel.segmentResultsFor(activityId)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+    ) {
+        val current = results
+        when {
+            current == null -> {
+                Text(
+                    text = "LOADING RESULTS",
+                    style = MicroLabelStyle,
+                    color = ShiftTextMuted,
+                    modifier = Modifier.padding(vertical = 10.dp)
+                )
+            }
+            current.isEmpty() -> {
+                Text(
+                    text = "NO SEGMENT RESULTS",
+                    style = MicroLabelStyle,
+                    color = ShiftTextMuted,
+                    modifier = Modifier.padding(vertical = 10.dp)
+                )
+            }
+            else -> current.forEach { result -> SegmentResultRow(result) }
+        }
+    }
+}
+
+@Composable
+private fun SegmentResultRow(result: MainViewModel.SegmentResult) {
+    val timeStr = "%d:%02d".format(result.timeSeconds / 60, result.timeSeconds % 60)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .background(ShiftCardInset, RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = result.courseName,
+                style = CardTitleStyle,
+                color = ShiftTextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            // A rider wants the gap to their best more than the raw placing.
+            val detail = when {
+                result.isPr -> "PERSONAL BEST"
+                result.deltaToPrSeconds > 0 -> "+${result.deltaToPrSeconds}s OFF BEST"
+                else -> "MATCHED BEST"
+            }
+            Text(
+                text = if (result.estimated) "$detail · ESTIMATED" else detail,
+                style = MicroLabelStyle,
+                color = if (result.isPr) ShiftOrange else ShiftTextMuted
+            )
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Text(
+            text = timeStr,
+            style = CardTitleStyle,
+            color = ShiftTextPrimary
+        )
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        // Placing pill, filled when it is a win so a best stands out down the list.
+        val isWin = result.position == 1
+        Box(
+            modifier = Modifier
+                .then(
+                    if (isWin) Modifier.background(ShiftOrange, RoundedCornerShape(999.dp))
+                    else Modifier.border(1.dp, ShiftDotBorder, RoundedCornerShape(999.dp))
+                )
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+        ) {
+            Text(
+                text = "${ordinalOf(result.position)}/${result.fieldSize}",
+                style = MicroLabelStyle.copy(fontWeight = FontWeight.Bold),
+                color = if (isWin) Color.White else ShiftTextSecondary
+            )
+        }
+    }
+}
+
+private fun ordinalOf(n: Int): String {
+    val suffix = when {
+        n % 100 in 11..13 -> "th"
+        n % 10 == 1 -> "st"
+        n % 10 == 2 -> "nd"
+        n % 10 == 3 -> "rd"
+        else -> "th"
+    }
+    return "$n$suffix"
 }
 
 @Composable
@@ -252,6 +384,8 @@ fun MonthlySummaryCard(
 fun ActivityItem(
     activity: Activity,
     segmentCount: Int = 0,
+    expanded: Boolean = false,
+    onSegmentClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val distanceMiles = (activity.distance ?: 0.0) * 0.000621371
@@ -352,13 +486,18 @@ fun ActivityItem(
             }
             if (segmentCount > 0) {
                 Spacer(modifier = Modifier.width(8.dp))
-                // Dotted-outline pill badge
+                // Dotted-outline pill badge, and the way in to this ride's results.
                 Box(
                     modifier = Modifier
                         .border(
                             width = 1.dp,
-                            color = ShiftDotBorder,
+                            color = if (expanded) ShiftOrange else ShiftDotBorder,
                             shape = RoundedCornerShape(999.dp)
+                        )
+                        .then(
+                            if (onSegmentClick != null) {
+                                Modifier.clickable(onClick = onSegmentClick)
+                            } else Modifier
                         )
                         .padding(horizontal = 10.dp, vertical = 5.dp)
                 ) {

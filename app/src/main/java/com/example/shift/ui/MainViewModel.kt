@@ -1103,6 +1103,60 @@ class MainViewModel(
 
 
 
+    /**
+     * How one segment effort inside a ride placed against every other attempt at
+     * that segment.
+     */
+    data class SegmentResult(
+        val courseId: String,
+        val courseName: String,
+        val timeSeconds: Int,
+        val position: Int,
+        val fieldSize: Int,
+        val isPr: Boolean,
+        val estimated: Boolean,
+        val deltaToPrSeconds: Int
+    )
+
+    /**
+     * Results for every segment matched inside one ride, fastest effort first.
+     *
+     * Placing is worked out against the same candidate set the PR logic uses: real
+     * timings only, unless a segment has nothing but estimated ones. Mixing them
+     * would let an estimate outrank a genuine effort.
+     */
+    suspend fun segmentResultsFor(activityId: String): List<SegmentResult> = try {
+        val courses = courseManager.coursesFlow.first()
+        val namesById = courses.associate { it.id to it.name }
+        val allMatches = matchCacheManager.getAllMatches()
+
+        allMatches
+            .filter { it.activityId == activityId && namesById.containsKey(it.courseId) }
+            .map { match ->
+                val onThisCourse = allMatches.filter { it.courseId == match.courseId }
+                val real = onThisCourse.filter { !it.estimatedTime }
+                val candidates = if (real.isNotEmpty()) real else onThisCourse
+
+                val best = candidates.minOfOrNull { it.timeSeconds } ?: match.timeSeconds
+                val faster = candidates.count { it.timeSeconds < match.timeSeconds }
+
+                SegmentResult(
+                    courseId = match.courseId,
+                    courseName = namesById[match.courseId] ?: "Segment",
+                    timeSeconds = match.timeSeconds,
+                    position = faster + 1,
+                    fieldSize = candidates.size,
+                    isPr = match.timeSeconds <= best && !match.estimatedTime,
+                    estimated = match.estimatedTime,
+                    deltaToPrSeconds = match.timeSeconds - best
+                )
+            }
+            .sortedBy { it.timeSeconds }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        emptyList()
+    }
+
     fun reloadSegmentCounts() {
         viewModelScope.launch {
             try {
