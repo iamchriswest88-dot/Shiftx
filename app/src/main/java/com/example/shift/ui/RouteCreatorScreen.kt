@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -73,12 +74,19 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .padding(start = 12.dp, end = 24.dp, top = 16.dp, bottom = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "Route Creator",
+                    text = "Route Planner",
                     style = MaterialTheme.typography.displayMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -180,11 +188,13 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     
+                    // ORS caps round trips at 100km, so 60mi is the honest ceiling —
+                    // the old 100mi top could never generate.
                     Slider(
                         value = targetDistanceMiles,
                         onValueChange = { viewModel.setTargetDistance(it) },
-                        valueRange = 5f..100f,
-                        steps = 19,
+                        valueRange = 5f..60f,
+                        steps = 10,
                         modifier = Modifier.fillMaxWidth(),
                         colors = SliderDefaults.colors(
                             thumbColor = Color(0xFFFFC700),

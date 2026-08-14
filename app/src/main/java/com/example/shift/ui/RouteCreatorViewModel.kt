@@ -63,11 +63,9 @@ class RouteCreatorViewModel(
             _statusMessage.value = "Generating route..."
             _generatedRoute.value = null
 
-            val savedKey = settingsManager.orsApiKeyFlow.first()
-            val apiKey = if (savedKey.isNullOrBlank()) "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjE3NTJkMDU1NjZiOTRiMDZiY2RjMTZjMmI3MmVhZDkxIiwiaCI6Im11cm11cjY0In0=" else savedKey
-
-            if (apiKey.isBlank()) {
-                _errorMessage.value = "Set your OpenRouteService API key in Settings"
+            val apiKey = settingsManager.orsApiKeyFlow.first()
+            if (apiKey.isNullOrBlank()) {
+                _errorMessage.value = "Add your OpenRouteService API key in Settings (free at openrouteservice.org)"
                 _isGenerating.value = false
                 _statusMessage.value = ""
                 return@launch

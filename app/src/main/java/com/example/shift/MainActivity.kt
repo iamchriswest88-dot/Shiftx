@@ -152,6 +152,7 @@ class MainActivity : ComponentActivity() {
                                         0 -> CoursesScreen(
                                             viewModel = coursesListViewModel,
                                             onCreateCourse = { navController.navigate("create_course/new") },
+                                            onOpenRoutePlanner = { navController.navigate("route_planner") },
                                             onCourseClick = { courseId -> navController.navigate("course_detail/$courseId") }
                                         )
                                         1 -> SettingsScreen(viewModel = mainViewModel)
@@ -203,6 +204,7 @@ class MainActivity : ComponentActivity() {
                                         4 -> CoursesScreen(
                                             viewModel = coursesListViewModel,
                                             onCreateCourse = { navController.navigate("create_course/new") },
+                                            onOpenRoutePlanner = { navController.navigate("route_planner") },
                                             onCourseClick = { courseId -> navController.navigate("course_detail/$courseId") }
                                         )
                                         5 -> SettingsScreen(viewModel = mainViewModel)
@@ -334,6 +336,12 @@ class MainActivity : ComponentActivity() {
                             onCourseClick = { cId -> navController.navigate("course_detail/$cId") }
                         )
 
+                    }
+                    composable("route_planner") {
+                        RouteCreatorScreen(
+                            viewModel = routeCreatorViewModel,
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                     composable("create_course/{activityId}") { backStackEntry ->
                         val activityId = backStackEntry.arguments?.getString("activityId") ?: return@composable

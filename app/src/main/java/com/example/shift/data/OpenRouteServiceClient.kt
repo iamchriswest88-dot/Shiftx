@@ -114,11 +114,12 @@ class OpenRouteServiceClient {
                             add("ferries")
                             add("steps")
                         })
+                        // green/quiet are pedestrian-profile weightings; ORS ignores
+                        // them on cycling-* so sending them only implied an effect
+                        // that never existed.
                         put("profile_params", buildJsonObject {
                             put("weightings", buildJsonObject {
                                 put("steepness_difficulty", 2)
-                                put("green", 1)
-                                put("quiet", 1)
                             })
                         })
                     })
