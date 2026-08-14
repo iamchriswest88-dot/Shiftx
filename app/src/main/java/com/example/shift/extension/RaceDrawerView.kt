@@ -298,13 +298,13 @@ class RaceDrawerView(
     }
 
     private fun drawCellRow(canvas: Canvas, w: Float, top: Float, cellHeight: Float) {
-        // The unit rides in the label so the number itself stays as large as possible.
-        // A bare value would be ambiguous, since the readout switches between km and m.
+        // No unit, so the number gets the whole cell. The decimal point carries the
+        // scale instead: "1.2" is kilometres, "850" is metres.
         val remaining = state.distanceRemainingMeters
-        val toGo = when {
-            remaining == null -> "TO GO" to "--"
-            remaining >= 1000.0 -> "TO GO KM" to String.format("%.1f", remaining / 1000.0)
-            else -> "TO GO M" to remaining.roundToInt().toString()
+        val toGo = "TO GO" to when {
+            remaining == null -> "--"
+            remaining >= 1000.0 -> String.format("%.1f", remaining / 1000.0)
+            else -> remaining.roundToInt().toString()
         }
 
         val cells = listOf(
