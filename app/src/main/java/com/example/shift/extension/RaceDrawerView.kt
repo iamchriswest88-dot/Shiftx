@@ -110,7 +110,15 @@ class RaceDrawerView(
 
     private fun chipText(): String {
         val finished = state.finished
-        if (finished != null) return "FIN ${formatMmSs(finished.timeSeconds.toDouble())}"
+        if (finished != null) {
+            val time = formatMmSs(finished.timeSeconds.toDouble())
+            val pos = finished.position
+            return if (pos != null && finished.fieldSize > 0) {
+                "${ordinal(pos)}/${finished.fieldSize}   $time"
+            } else {
+                "FIN $time"
+            }
+        }
         if (state.activeCourseId != null) {
             val pos = state.racePosition
             val gap = state.gapAheadSeconds
@@ -149,7 +157,7 @@ class RaceDrawerView(
 
         val finished = state.finished
         if (finished != null) {
-            drawFinishLine(canvas, w, h * 0.68f, h * 0.32f, finished)
+            drawFinishSummary(canvas, w, h, finished)
             return
         }
 
@@ -247,15 +255,46 @@ class RaceDrawerView(
         canvas.drawRoundRect(RectF(w / 2f - 24f, 10f, w / 2f + 24f, 15f), 3f, 3f, grabber)
     }
 
-    private fun drawFinishLine(canvas: Canvas, w: Float, baseline: Float, size: Float, finished: FinishResult) {
+    /** Placing on top, time below — the two things worth reading at the line. */
+    private fun drawFinishSummary(canvas: Canvas, w: Float, h: Float, finished: FinishResult) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
             typeface = Typeface.DEFAULT_BOLD
-            textSize = size
-            color = if (finished.isNewPr) ACCENT else VALUE
         }
-        val label = if (finished.isNewPr) "NEW PR" else "FINISHED"
-        canvas.drawText("$label  ${formatMmSs(finished.timeSeconds.toDouble())}", w / 2f, baseline, paint)
+
+        val position = finished.position
+        val heading = when {
+            position != null && finished.fieldSize > 0 -> "${ordinal(position)} OF ${finished.fieldSize}"
+            finished.isNewPr -> "NEW PR"
+            else -> "FINISHED"
+        }
+        paint.textSize = h * 0.24f
+        // Winning the field or setting a PR both earn the accent.
+        paint.color = if (finished.isNewPr || position == 1) ACCENT else LABEL
+        canvas.drawText(heading, w / 2f, h * 0.42f, paint)
+
+        // Keep the PR flag visible even when the placing has taken the heading.
+        val timeText = formatMmSs(finished.timeSeconds.toDouble())
+        val detail = if (position != null && finished.isNewPr) "$timeText  ·  NEW PR" else timeText
+        paint.textSize = h * 0.34f
+        paint.color = VALUE
+        var size = paint.textSize
+        while (size > 12f && paint.measureText(detail) > w * 0.9f) {
+            size -= 1f
+            paint.textSize = size
+        }
+        canvas.drawText(detail, w / 2f, h * 0.84f, paint)
+    }
+
+    private fun ordinal(n: Int): String {
+        val suffix = when {
+            n % 100 in 11..13 -> "TH"
+            n % 10 == 1 -> "ST"
+            n % 10 == 2 -> "ND"
+            n % 10 == 3 -> "RD"
+            else -> "TH"
+        }
+        return "$n$suffix"
     }
 
     private fun drawCellRow(canvas: Canvas, w: Float, top: Float, cellHeight: Float) {

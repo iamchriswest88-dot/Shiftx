@@ -25,7 +25,11 @@ import com.example.shift.data.CurvePoint
 data class FinishResult(
     val timeSeconds: Int,
     val prTimeSeconds: Int?,
-    val isNewPr: Boolean
+    val isNewPr: Boolean,
+    /** Final placing, 1 = won. Null when there was no field to race. */
+    val position: Int? = null,
+    /** Field size including the rider. */
+    val fieldSize: Int = 0
 )
 
 data class TrackingState(
@@ -343,10 +347,19 @@ class CourseTracker(
                 recordAttempt(course, elapsedSecondsInt, currentCurve.toList())
                 
                 val isNewPr = prRecord == null || elapsedSecondsInt < prRecord.timeSeconds
+
+                // Final placing is settled on finishing times, not the mid-segment gap
+                // positions — a ghost still out on the road has simply been beaten.
+                // Computed before activeGhostSpecs is cleared below.
+                val ratedGhosts = activeGhostSpecs.filter { it.timeSeconds > 0 }
+                val beatenBy = ratedGhosts.count { it.timeSeconds < elapsedSecondsInt }
+
                 val finishResult = FinishResult(
                     timeSeconds = elapsedSecondsInt,
                     prTimeSeconds = prRecord?.timeSeconds,
-                    isNewPr = isNewPr
+                    isNewPr = isNewPr,
+                    position = if (ratedGhosts.isEmpty()) null else beatenBy + 1,
+                    fieldSize = if (ratedGhosts.isEmpty()) 0 else ratedGhosts.size + 1
                 )
                 activeCourse = null
                 activeGhostSpecs = emptyList()
