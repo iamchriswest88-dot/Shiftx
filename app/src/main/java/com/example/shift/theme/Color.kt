@@ -29,6 +29,12 @@ val ChartAtlColor = Color(0xFFF0521E)
 val ElevProfileFill = Color(0xFFE3E3DB)
 val ElevProfileStroke = Color(0xFF1A1A18)
 
+/**
+ * The route line on the map, matching '#5CD5FA' in assets/leaflet_map.html.
+ * Shared so the elevation profile cannot drift away from the route it describes.
+ */
+val RouteLineColor = Color(0xFF5CD5FA)
+
 // Backward-compatible material color mappings
 val primary = ShiftOrange
 val onPrimary = Color(0xFFFFFFFF)

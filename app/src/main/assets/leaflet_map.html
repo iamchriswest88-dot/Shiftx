@@ -43,6 +43,16 @@
         }).addTo(map);
 
         var routeLayer = L.layerGroup().addTo(map);
+        // Kept so the route can be re-framed after the container resizes, which
+        // happens whenever the activity drawer is dragged.
+        var lastBounds = null;
+
+        function refit() {
+            map.invalidateSize();
+            if (lastBounds && lastBounds.isValid()) {
+                map.fitBounds(lastBounds, {padding: [30, 30]});
+            }
+        }
         var courseLayer = L.layerGroup().addTo(map);
         var segmentsLayer = L.layerGroup().addTo(map);
         var segmentOverlayLayer = L.layerGroup().addTo(map);
@@ -109,6 +119,7 @@
                         }
                     }
                     
+                    lastBounds = bounds;
                     map.fitBounds(bounds);
                     setTimeout(function() {
                         map.invalidateSize();

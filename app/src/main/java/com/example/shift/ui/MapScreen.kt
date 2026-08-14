@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -157,7 +158,9 @@ fun MapScreen(
             sheetContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
             sheetContentColor = MaterialTheme.colorScheme.onSurface,
             sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
-            sheetPeekHeight = if (isCreationMode) 320.dp else 240.dp,
+            // Taller so the second stats row (avg mph, avg W, TSS) is visible without
+            // dragging the drawer open.
+            sheetPeekHeight = if (isCreationMode) 320.dp else 320.dp,
             sheetDragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)) },
             sheetContent = {
                 if (isCreationMode) {
@@ -306,7 +309,12 @@ fun MapScreen(
                             
                             val elevAlt = (act.total_elevation_gain ?: 0.0) * 3.28084
                             val avgWattsVal = act.icu_average_watts
+                            // average_speed is m/s from Intervals.
+                            val avgMph = act.average_speed?.let { it * 2.23694 }
+                            val tss = act.icu_training_load
 
+                            // Two rows of four rather than one row of six: six cards on a
+                            // phone leaves each too narrow to read the value.
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -314,7 +322,15 @@ fun MapScreen(
                                 StatCard("miles", "%.1f".format(distMi), Modifier.weight(1f))
                                 StatCard("moving", movingStr, Modifier.weight(1f))
                                 StatCard("ft gain", "%,.0f".format(elevAlt), Modifier.weight(1f))
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                StatCard("avg mph", avgMph?.let { "%.1f".format(it) } ?: "--", Modifier.weight(1f))
                                 StatCard("avg W", if (avgWattsVal != null) "$avgWattsVal" else "--", Modifier.weight(1f))
+                                StatCard("TSS", tss?.let { "%,.0f".format(it) } ?: "--", Modifier.weight(1f))
                             }
                         }
                         
@@ -335,8 +351,12 @@ fun MapScreen(
                             }
                         } else if (elevationProfile != null && elevationProfile!!.isNotEmpty()) {
                             val profile = elevationProfile!!
-                            val primaryColor = MaterialTheme.colorScheme.primary
-                            val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                            // Same colour as the route on the map, so the profile reads as
+                            // the same line seen side-on.
+                            val primaryColor = com.example.shift.theme.RouteLineColor
+                            // Same ground as the sheet, so the graph sits in the drawer
+                            // rather than looking like a card dropped onto it.
+                            val surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
                             val onSurfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant
                             
                             androidx.compose.foundation.Canvas(
@@ -492,7 +512,26 @@ fun MapScreen(
                 }
             },
             content = { paddingValues ->
-                Box(modifier = Modifier.fillMaxSize()) {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    // Shrink the map to whatever the sheet leaves visible, so an open
+                    // drawer scales the route down instead of covering half of it.
+                    // requireOffset throws before first layout, hence the guard.
+                    val containerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
+                    val sheetTopPx = runCatching { scaffoldState.bottomSheetState.requireOffset() }
+                        .getOrDefault(containerHeightPx)
+                    val mapBottomInset = with(LocalDensity.current) {
+                        (containerHeightPx - sheetTopPx).coerceAtLeast(0f).toDp()
+                    }
+
+                    // Re-frame the route once the size settles, otherwise Leaflet keeps
+                    // the old viewport and simply crops.
+                    var mapView by remember { mutableStateOf<WebView?>(null) }
+                    LaunchedEffect(mapBottomInset) {
+                        kotlinx.coroutines.delay(120)
+                        mapView?.evaluateJavascript("if (typeof refit === 'function') refit();", null)
+                    }
+
+                    Box(modifier = Modifier.fillMaxSize().padding(bottom = mapBottomInset)) {
                     AndroidView(
                         factory = { ctx ->
                             WebView(ctx).apply {
@@ -542,7 +581,7 @@ fun MapScreen(
                                 }
 
                                 loadUrl("file:///android_asset/leaflet_map.html")
-                            }
+                            }.also { mapView = it }
                         },
                         update = { view ->
                             val sLat = startMarker?.latitude
@@ -565,6 +604,7 @@ fun MapScreen(
                         },
                         modifier = Modifier.fillMaxSize()
                     )
+                    }
 
                     Box(
                         modifier = Modifier
