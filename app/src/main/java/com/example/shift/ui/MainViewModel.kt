@@ -94,7 +94,12 @@ class MainViewModel(
     val endRideFanfare: StateFlow<String> = settingsManager.endRideFanfareFlow.stateIn(viewModelScope, SharingStarted.Lazily, "")
 
     fun saveEndRideFanfare(pattern: String) {
-        viewModelScope.launch { settingsManager.saveEndRideFanfare(pattern.trim()) }
+        viewModelScope.launch {
+            settingsManager.saveEndRideFanfare(pattern.trim())
+            // Push straight away — the melody is edited on the phone but played
+            // by the Karoo, so a save that stays local silently does nothing.
+            cloudSyncManager.fullSync()
+        }
     }
 
     fun setAutoOpenSegmentPage(enabled: Boolean) {
