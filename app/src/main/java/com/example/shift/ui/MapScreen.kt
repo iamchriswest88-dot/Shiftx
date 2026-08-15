@@ -638,6 +638,28 @@ fun MapScreen(
                     )
                     }
 
+                    // Route-blue glow bleeding from under the drawer's top edge,
+                    // tracking the sheet as it is dragged.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(22.dp)
+                            .offset {
+                                androidx.compose.ui.unit.IntOffset(
+                                    0,
+                                    (sheetTopPx - 22.dp.toPx()).toInt().coerceAtLeast(0)
+                                )
+                            }
+                            .background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    colors = listOf(
+                                        androidx.compose.ui.graphics.Color.Transparent,
+                                        RouteLineColor.copy(alpha = 0.4f)
+                                    )
+                                )
+                            )
+                    )
+
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
