@@ -36,6 +36,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.shift.theme.MicroLabelStyle
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import com.example.shift.theme.RouteLineColor
 import com.example.shift.theme.ShiftTextMuted
 import com.example.shift.theme.ShiftTextPrimary
@@ -148,6 +153,16 @@ fun MapScreen(
         val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
         var selectedTab by remember { mutableIntStateOf(0) }
 
+        // Frosted drawer: the map blurs through the sheet (Android 12+; older
+        // devices fall back to the translucent tint, the pre-blur look).
+        val hazeState = remember { HazeState() }
+        val sheetHazeStyle = HazeStyle(
+            backgroundColor = MaterialTheme.colorScheme.surface,
+            tints = listOf(HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))),
+            blurRadius = 24.dp,
+            noiseFactor = 0f
+        )
+
         // A fresh creation starts from a blank map. The view model is shared
         // across screens, so on the first frame `stream` still holds whatever
         // activity was open last — it gets cleared by loadActivity("new"), but
@@ -165,21 +180,23 @@ fun MapScreen(
 
         BottomSheetScaffold(
             scaffoldState = scaffoldState,
-            sheetContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+            sheetContainerColor = Color.Transparent,
             sheetContentColor = MaterialTheme.colorScheme.onSurface,
             sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
             // Taller so the second stats row (avg mph, avg W, TSS) is visible without
             // dragging the drawer open.
             sheetPeekHeight = if (isCreationMode) 320.dp else 320.dp,
-            sheetDragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)) },
+            sheetDragHandle = {},
             sheetContent = {
                 if (isCreationMode) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .hazeEffect(hazeState, sheetHazeStyle)
                             .verticalScroll(rememberScrollState())
                             .padding(horizontal = 20.dp, vertical = 8.dp)
                     ) {
+                        SheetHandleBar()
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -244,10 +261,12 @@ fun MapScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .hazeEffect(hazeState, sheetHazeStyle)
                             .verticalScroll(rememberScrollState())
                             .padding(horizontal = 20.dp, vertical = 8.dp)
                             .navigationBarsPadding()
                     ) {
+                        SheetHandleBar()
                         // Title and segment count badge row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -536,7 +555,7 @@ fun MapScreen(
                 }
             },
             content = { paddingValues ->
-                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize().hazeSource(hazeState)) {
                     // The map view itself stays full-screen — resizing it looked like
                     // the map shrinking. Instead the ROUTE is re-framed: while the
                     // drawer is up it zooms out to fit the whole course in the strip
@@ -940,6 +959,21 @@ fun StepDot(number: String, label: String, isActive: Boolean, isComplete: Boolea
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
             color = if (isActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** Drag-handle bar drawn inside the frosted sheet, since the stock handle would sit on clear glass. */
+@Composable
+fun SheetHandleBar() {
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .padding(top = 10.dp, bottom = 8.dp)
+                .width(36.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
         )
     }
 }

@@ -51,7 +51,13 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -134,6 +140,8 @@ class MainActivity : ComponentActivity() {
                             pageCount = { tabs.size }
                         )
                         val coroutineScope = rememberCoroutineScope()
+                        // Everything scrolling under the pill blurs through it.
+                        val hazeState = remember { HazeState() }
 
                         Box(
                             modifier = Modifier
@@ -143,7 +151,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             HorizontalPager(
                                 state = pagerState,
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.fillMaxSize().hazeSource(hazeState),
                                 userScrollEnabled = true
                             ) { page ->
                                 if (isKaroo) {
@@ -195,6 +203,7 @@ class MainActivity : ComponentActivity() {
 
                             // Floating Blur Pill Navigation Overlay
                             FloatingBottomNav(
+                                hazeState = hazeState,
                                 tabs = tabs,
                                 tabIcons = tabIconsSelected,
                                 selectedIndex = pagerState.currentPage,
@@ -353,8 +362,17 @@ fun FloatingBottomNav(
     tabIcons: List<ImageVector>,
     selectedIndex: Int,
     onTabSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    hazeState: HazeState? = null
 ) {
+    // Frosted pill: page content blurs through it (Android 12+; older devices
+    // get the translucent tint alone, which is the pre-blur look).
+    val pillStyle = HazeStyle(
+        backgroundColor = Color.White,
+        tints = listOf(HazeTint(Color.White.copy(alpha = 0.62f))),
+        blurRadius = 22.dp,
+        noiseFactor = 0f
+    )
     Box(
         modifier = modifier
             .shadow(
@@ -363,7 +381,10 @@ fun FloatingBottomNav(
                 spotColor = Color.Black.copy(alpha = 0.16f)
             )
             .clip(RoundedCornerShape(999.dp))
-            .background(Color.White.copy(alpha = 0.88f))
+            .then(
+                if (hazeState != null) Modifier.hazeEffect(hazeState, pillStyle)
+                else Modifier.background(Color.White.copy(alpha = 0.88f))
+            )
             .border(1.dp, Color(0xCCFFFFFF), RoundedCornerShape(999.dp))
             .padding(6.dp)
     ) {

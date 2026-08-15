@@ -146,6 +146,7 @@ dependencies {
 
   // Gemini AI
   implementation(libs.generative.ai)
+  implementation(libs.haze)
 
   // Karoo Extension
   implementation(files("libs/karooext.aar"))
