@@ -404,6 +404,48 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 Text("EXPORT DIAGNOSTICS")
             }
 
+            // Readable in place — on the Karoo there is no share sheet to export
+            // through, so this is the way a crash gets seen on the device itself.
+            Spacer(modifier = Modifier.height(12.dp))
+            var crashLog by remember { mutableStateOf<List<String>?>(null) }
+            OutlinedButton(
+                onClick = {
+                    crashLog = if (crashLog == null) {
+                        com.example.shift.data.CrashLogger.getEntries(context).filter { it.isNotBlank() }
+                    } else null
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text(if (crashLog == null) "VIEW CRASH LOG" else "HIDE CRASH LOG")
+            }
+            crashLog?.let { lines ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        if (lines.isEmpty()) {
+                            Text("No crashes recorded.", style = MaterialTheme.typography.bodyMedium)
+                        } else {
+                            Text(
+                                lines.takeLast(120).joinToString("\n"),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(onClick = {
+                                com.example.shift.data.CrashLogger.clear(context)
+                                crashLog = emptyList()
+                            }) {
+                                Text("CLEAR CRASH LOG")
+                            }
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
         }
     }

@@ -8,6 +8,7 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PUT
+import retrofit2.http.Path
 
 interface FirebaseApi {
 
@@ -28,4 +29,9 @@ interface FirebaseApi {
     // every sync scrubs whatever is still stored there.
     @DELETE("settings.json")
     suspend fun deleteSettings(): Response<ResponseBody>
+
+    // The Karoo has no practical way to hand over a file, so each device parks
+    // its crash log here where a browser can read it. Stack traces only.
+    @PUT("crashlog/{device}.json")
+    suspend fun pushCrashLog(@Path("device") device: String, @Body lines: List<String>)
 }

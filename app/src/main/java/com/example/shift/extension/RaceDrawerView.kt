@@ -10,6 +10,7 @@ import android.graphics.Typeface
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import com.example.shift.data.CrashLogger
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -79,14 +80,24 @@ class RaceDrawerView(
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         // The chip wraps its text so the bottom corners stay free for the Karoo's own
         // swipe-up drawer gesture; EXPANDED/FULL windows pass exact sizes through.
-        if (mode == DrawerMode.CHIP) {
-            chipTextPaint.textSize = chipHeightPx * 0.42f
-            val w = (chipTextPaint.measureText(chipText()) + chipHeightPx * 1.6f).roundToInt()
-            setMeasuredDimension(w, chipHeightPx)
-        } else {
+        try {
+            if (mode == DrawerMode.CHIP) {
+                chipTextPaint.textSize = chipHeightPx * 0.42f
+                val w = (chipTextPaint.measureText(chipText()) + chipHeightPx * 1.6f).roundToInt()
+                setMeasuredDimension(w, chipHeightPx)
+            } else {
+                setMeasuredDimension(
+                    MeasureSpec.getSize(widthMeasureSpec),
+                    MeasureSpec.getSize(heightMeasureSpec)
+                )
+            }
+        } catch (t: Throwable) {
+            // Framework callback — unguarded, a throw here kills the process
+            // mid-ride. Record it and fall back to a legal size.
+            CrashLogger.record(t, "race drawer onMeasure ($mode)")
             setMeasuredDimension(
-                MeasureSpec.getSize(widthMeasureSpec),
-                MeasureSpec.getSize(heightMeasureSpec)
+                MeasureSpec.getSize(widthMeasureSpec).coerceAtLeast(1),
+                chipHeightPx.coerceAtLeast(1)
             )
         }
     }
@@ -98,11 +109,18 @@ class RaceDrawerView(
     }
 
     override fun onDraw(canvas: Canvas) {
-        when (mode) {
-            DrawerMode.HIDDEN -> Unit
-            DrawerMode.CHIP -> drawChip(canvas)
-            DrawerMode.EXPANDED -> drawExpanded(canvas)
-            DrawerMode.FULL -> drawFull(canvas)
+        // Framework callback, outside every coroutine guard: this is the one
+        // place in the ride path where a throw kills the whole app. One blank
+        // drawer frame is the better failure, and the log keeps the evidence.
+        try {
+            when (mode) {
+                DrawerMode.HIDDEN -> Unit
+                DrawerMode.CHIP -> drawChip(canvas)
+                DrawerMode.EXPANDED -> drawExpanded(canvas)
+                DrawerMode.FULL -> drawFull(canvas)
+            }
+        } catch (t: Throwable) {
+            CrashLogger.record(t, "race drawer onDraw ($mode)")
         }
     }
 

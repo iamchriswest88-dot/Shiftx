@@ -92,6 +92,20 @@ class CloudSyncManager(private val context: Context) {
                     Log.w("CloudSync", "Could not scrub legacy settings node", e)
                 }
 
+                // Park this device's crash log where a browser can read it —
+                // the Karoo has no other practical way to hand a stack trace over.
+                try {
+                    val crashLines = CrashLogger.getEntries(context).filter { it.isNotBlank() }
+                    if (crashLines.isNotEmpty()) {
+                        val device = android.os.Build.MODEL
+                            .replace(Regex("[^A-Za-z0-9_-]"), "_")
+                            .ifBlank { "unknown" }
+                        api.pushCrashLog(device, crashLines.takeLast(400))
+                    }
+                } catch (e: Exception) {
+                    Log.w("CloudSync", "Could not upload crash log", e)
+                }
+
                 Log.d("CloudSync", "Full sync complete: ${liveCourseIds.size} segments, ${mergedMatches.size} matches")
             } catch (e: Exception) {
                 Log.e("CloudSync", "Full sync failed", e)
