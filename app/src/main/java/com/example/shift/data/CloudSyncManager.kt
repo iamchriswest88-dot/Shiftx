@@ -60,13 +60,28 @@ class CloudSyncManager(private val context: Context) {
      * If the pull fails nothing is pushed — a device that can't see the cloud's
      * current state has no business overwriting it.
      */
+    /**
+     * Firebase answers an empty node with the literal `null`, which the JSON
+     * converter refuses to decode into a non-null type — so a never-written
+     * node threw, and the throw skipped the push that would have written it:
+     * a deadlock that kept new nodes empty forever. A parse failure therefore
+     * means "nothing there yet". Genuine I/O failures still propagate, so a
+     * device that can't reach the cloud never overwrites it.
+     */
+    private suspend fun <T> pullOrEmpty(name: String, call: suspend () -> T?): T? = try {
+        call()
+    } catch (e: kotlinx.serialization.SerializationException) {
+        Log.w("CloudSync", "Node $name empty or unreadable; treating as absent", e)
+        null
+    }
+
     suspend fun fullSync() = withContext(Dispatchers.IO) {
         syncMutex.withLock {
             try {
                 val api = getApi() ?: return@withLock
                 Log.d("CloudSync", "Full sync: pulling...")
-                val cloudCourses = api.pullCourses() ?: emptyList()
-                val cloudMatches = api.pullMatches() ?: emptyList()
+                val cloudCourses = pullOrEmpty("courses") { api.pullCourses() } ?: emptyList()
+                val cloudMatches = pullOrEmpty("matches") { api.pullMatches() } ?: emptyList()
                 val now = System.currentTimeMillis()
 
                 val mergedCourses = SyncMerge.mergeCourses(courseManager.rawCourses(), cloudCourses, now)
@@ -95,7 +110,8 @@ class CloudSyncManager(private val context: Context) {
                 // Carry the fanfare melody across: edited on the phone, played by
                 // the Karoo. Newest edit wins, blank counts as an edit too.
                 try {
-                    val cloudFanfare = api.pullFanfare() ?: com.example.shift.api.CloudFanfare()
+                    val cloudFanfare = pullOrEmpty("fanfare") { api.pullFanfare() }
+                        ?: com.example.shift.api.CloudFanfare()
                     val localTs = settingsManager.endRideFanfareUpdatedAtFlow.first()
                     if (cloudFanfare.updatedAt > localTs) {
                         settingsManager.saveEndRideFanfareFromSync(cloudFanfare.pattern, cloudFanfare.updatedAt)
