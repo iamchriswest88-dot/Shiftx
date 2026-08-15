@@ -34,11 +34,11 @@ class RaceDrawerView(
     companion object {
         private const val SWIPE_MIN_VELOCITY = 400
 
-        // Red theme. Rank brightness must stay in step with the ic_ghost_N drawables
-        // and MapLayerManager.iconForRank.
-        private val PANEL = Color.argb(232, 12, 2, 4)
-        private val ACCENT = Color.parseColor("#FF1744")
-        private val LABEL = Color.parseColor("#FF8A80")
+        // Purple theme, matching the phone app's accent. Rank brightness must
+        // stay in step with the ic_ghost_N drawables and MapLayerManager.iconForRank.
+        private val PANEL = Color.argb(232, 10, 4, 16)
+        private val ACCENT = Color.parseColor("#A855F7")
+        private val LABEL = Color.parseColor("#D8B4FE")
         private val VALUE = Color.WHITE
         private val MUTED = Color.parseColor("#8A8A8A")
     }
@@ -251,7 +251,7 @@ class RaceDrawerView(
         val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ACCENT }
         canvas.drawRoundRect(RectF(0f, 0f, w, 5f), 3f, 3f, edge)
 
-        val grabber = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#7A2933") }
+        val grabber = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#4A2973") }
         canvas.drawRoundRect(RectF(w / 2f - 24f, 10f, w / 2f + 24f, 15f), 3f, 3f, grabber)
     }
 
@@ -329,7 +329,7 @@ class RaceDrawerView(
             textSize = cellHeight * 0.46f
             typeface = Typeface.DEFAULT_BOLD
         }
-        val divider = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#3A1F24"); strokeWidth = 1f }
+        val divider = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#2E1F3A"); strokeWidth = 1f }
 
         val baseValueSize = valuePaint.textSize
         cells.forEachIndexed { i, (label, value) ->
@@ -352,11 +352,11 @@ class RaceDrawerView(
     /** Must stay in step with MapLayerManager.iconForRank and the ic_ghost_N drawables. */
     private fun rankColor(rank: Int): Int = Color.parseColor(
         when (rank) {
-            1 -> "#FF1744" // vivid red — fastest
-            2 -> "#FF7043" // coral
-            3 -> "#D50000" // deep red
-            4 -> "#FF8A80" // pale red
-            else -> "#FF5252" // lifted from maroon; the map's #7F0000 is unreadable as text
+            1 -> "#A855F7" // vivid purple — fastest
+            2 -> "#C084FC" // light purple
+            3 -> "#7E22CE" // deep purple
+            4 -> "#D8B4FE" // pale lavender
+            else -> "#9333EA" // lifted from deep violet; the map's #4C1D95 is unreadable as text
         }
     )
 

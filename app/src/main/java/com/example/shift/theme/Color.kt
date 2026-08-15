@@ -33,10 +33,12 @@ val ElevProfileFill = Color(0xFFE3E3DB)
 val ElevProfileStroke = Color(0xFF1A1A18)
 
 /**
- * The route line on the map, matching '#5CD5FA' in assets/leaflet_map.html.
- * Shared so the elevation profile cannot drift away from the route it describes.
+ * The route line on the map, matching '#C084FC' in assets/leaflet_map.html —
+ * a light purple sitting one step above the solid accent, as the old cyan sat
+ * apart from the orange. Shared so the elevation profile cannot drift away
+ * from the route it describes.
  */
-val RouteLineColor = Color(0xFF5CD5FA)
+val RouteLineColor = Color(0xFFC084FC)
 
 // Backward-compatible material color mappings
 val primary = ShiftAccent

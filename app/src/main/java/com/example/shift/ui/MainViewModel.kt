@@ -400,7 +400,7 @@ class MainViewModel(
         title = "Functional Core & Postural Stability",
         categoryTag = "STRENGTH & CORE",
         isFlowType = false,
-        badgeColorHex = "#5CD5FA",
+        badgeColorHex = "#C084FC",
         reason = "Core stability supports all athletic performance.",
         recommendedRoutines = emptyList(),
         promptForAi = "Create a 20-minute core workout."

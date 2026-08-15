@@ -7,7 +7,7 @@
        Red family per request; brightness carries rank. Never #FF8C00, which is
        the Karoo's own route-arrow orange. -->
   <path
-      android:fillColor="#FF7043"
+      android:fillColor="#C084FC"
       android:strokeColor="#101010"
       android:strokeWidth="1.1"
       android:pathData="M12,2 L21,20 L12,16 L3,20 Z" />

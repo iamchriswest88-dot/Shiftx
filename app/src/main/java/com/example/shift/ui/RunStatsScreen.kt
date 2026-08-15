@@ -78,7 +78,7 @@ fun RunStatsScreen(
                 isFlow -> Pair(Color(0xFF81C784), Icons.Default.Spa)
                 isGym  -> Pair(Color(0xFFCE93D8), Icons.Default.FitnessCenter)
                 isRun  -> Pair(Color(0xFFFFD54F), Icons.Default.DirectionsRun)
-                else   -> Pair(Color(0xFF5CD5FA), Icons.AutoMirrored.Filled.DirectionsBike)
+                else   -> Pair(Color(0xFFC084FC), Icons.AutoMirrored.Filled.DirectionsBike)
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 16.dp)) {

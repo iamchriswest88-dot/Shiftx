@@ -101,7 +101,7 @@
                     
                     if (!useZones) {
                         var latlngs = dataPoints.map(function(pt) { return [pt[0], pt[1]]; });
-                        var pl = L.polyline(latlngs, {color: '#5CD5FA', weight: 5});
+                        var pl = L.polyline(latlngs, {color: '#C084FC', weight: 5});
                         routeLayer.addLayer(pl);
                         bounds = pl.getBounds();
                     } else {
@@ -212,7 +212,7 @@
             var latlngs = decodePolyline(encodedPolyline);
             // Blue border/stroke (slightly thicker, underneath)
             var stroke = L.polyline(latlngs, {
-                color: '#5CD5FA',
+                color: '#C084FC',
                 weight: 7,
                 opacity: 0.9
             });
