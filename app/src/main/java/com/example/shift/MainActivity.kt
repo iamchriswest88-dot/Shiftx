@@ -151,7 +151,6 @@ class MainActivity : ComponentActivity() {
                                         0 -> CoursesScreen(
                                             viewModel = coursesListViewModel,
                                             onCreateCourse = { navController.navigate("create_course/new") },
-                                            onOpenRoutePlanner = { navController.navigate("route_planner") },
                                             onCourseClick = { courseId -> navController.navigate("course_detail/$courseId") }
                                         )
                                         1 -> SettingsScreen(viewModel = mainViewModel)
