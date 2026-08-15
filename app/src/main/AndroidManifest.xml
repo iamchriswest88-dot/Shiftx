@@ -63,6 +63,19 @@
             </intent-filter>
         </activity>
 
+        <!-- Both GPX export and the diagnostics share ask this provider for a
+             shareable URI; without it registered, getUriForFile throws and the
+             export buttons silently do nothing. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <service
             android:name=".extension.ShiftExtension"
             android:exported="true"

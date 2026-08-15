@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shared-file roots for the FileProvider. GPX exports and diagnostics both
+     write to cacheDir before sharing. -->
+<paths>
+    <cache-path name="shared" path="." />
+</paths>
