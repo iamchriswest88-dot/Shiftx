@@ -151,8 +151,11 @@ class RideHeatmap private constructor(
         val sx = startLng * mPerDegLng
         val sy = startLat * mPerDegLat
 
-        // Per sector: (radius error, waypoint)
-        val best = arrayOfNulls<Pair<Double, Pair<Double, Double>>>(sectors)
+        // Per sector: (radius error, absolute bearing, waypoint). The band is
+        // deliberately tighter than it once was (0.65–1.45r): a 3.2x spread let
+        // two adjacent sectors pick cells on the SAME radial road at wildly
+        // different radii, forcing an out-and-back between them.
+        val best = arrayOfNulls<Triple<Double, Double, Pair<Double, Double>>>(sectors)
         for (k in cells.keys) {
             val cx = (k shr 32).toInt()
             val cy = k.toInt()
@@ -161,17 +164,34 @@ class RideHeatmap private constructor(
             val dx = x - sx
             val dy = y - sy
             val dist = sqrt(dx * dx + dy * dy)
-            if (dist < radius * 0.5 || dist > radius * 1.6) continue
+            if (dist < radius * 0.65 || dist > radius * 1.45) continue
 
-            val bearing = (Math.toDegrees(atan2(dx, dy)) + 720.0 - rotationDeg) % 360.0
+            val absBearing = (Math.toDegrees(atan2(dx, dy)) + 720.0) % 360.0
+            val bearing = (absBearing + 360.0 - rotationDeg) % 360.0
             val sector = (bearing / (360.0 / sectors)).toInt().coerceIn(0, sectors - 1)
             val err = abs(dist - radius)
             val cur = best[sector]
             if (cur == null || err < cur.first) {
-                best[sector] = Pair(err, Pair(y / mPerDegLat, x / mPerDegLng))
+                best[sector] = Triple(err, absBearing, Pair(y / mPerDegLat, x / mPerDegLng))
             }
         }
-        return best.filterNotNull().map { it.second }
+
+        // Collinearity guard: two waypoints within 25° of the same bearing from
+        // the start are the same radial road wearing two sector hats — riding
+        // between them is an out-and-back by construction. Keep the one whose
+        // radius fits better. Greedy in radius-fit order; survivors keep their
+        // circle (sector) order for sensible leg sequencing.
+        val picks = best.filterNotNull()
+        val kept = mutableListOf<Triple<Double, Double, Pair<Double, Double>>>()
+        for (candidate in picks.sortedBy { it.first }) {
+            val clashes = kept.any { existing ->
+                var diff = abs(candidate.second - existing.second) % 360.0
+                if (diff > 180.0) diff = 360.0 - diff
+                diff < 25.0
+            }
+            if (!clashes) kept.add(candidate)
+        }
+        return kept.sortedBy { it.second }.map { it.third }
     }
 
     /** Whether the rider has any history within [radiusM] of a point — decides if familiarity is meaningful here. */

@@ -421,9 +421,177 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
     private class Scored(val score: Double, val terrainPenalty: Double, val result: LoopRouteResult)
 
     /**
+     * Topological out-and-back removal (after Lewis & Corcoran, 2024). The
+     * route is quantised onto a 30m grid and read as an undirected simple
+     * graph; every out-and-back spur is then a chain hanging off the loop and
+     * falls away by repeatedly deleting degree-1 nodes — at ANY separation
+     * between the two passes, with no proximity gate to slip under. The
+     * start's node is protected: the stem from the rider's door to the loop
+     * is topologically mandatory, not a defect.
+     */
+    fun removeSpurTails(points: List<Pair<Double, Double>>): List<Pair<Double, Double>> {
+        if (points.size < 4) return points
+        val samples = interpolatePolyline(points, 20.0)
+        if (samples.size < 6) return points
+
+        val cellM = 30.0
+        val latRef = Math.toRadians(samples[0].first)
+        val mPerDegLat = 110_540.0
+        val mPerDegLng = 111_320.0 * cos(latRef)
+        fun cellOf(pt: Pair<Double, Double>): Long {
+            val cx = floor(pt.second * mPerDegLng / cellM).toInt()
+            val cy = floor(pt.first * mPerDegLat / cellM).toInt()
+            return (cx.toLong() shl 32) or (cy.toLong() and 0xFFFFFFFFL)
+        }
+
+        val seq = mutableListOf<Long>()
+        for (sample in samples) {
+            val c = cellOf(sample)
+            if (seq.isEmpty() || seq.last() != c) seq.add(c)
+        }
+        if (seq.size < 4) return points
+
+        val adj = HashMap<Long, MutableSet<Long>>()
+        for (i in 1 until seq.size) {
+            val a = seq[i - 1]
+            val b = seq[i]
+            adj.getOrPut(a) { mutableSetOf() }.add(b)
+            adj.getOrPut(b) { mutableSetOf() }.add(a)
+        }
+
+        val startCell = seq.first()
+        val removed = HashSet<Long>()
+        var frontier = adj.filter { it.value.size <= 1 && it.key != startCell }.keys.toMutableList()
+        while (frontier.isNotEmpty()) {
+            val next = mutableListOf<Long>()
+            for (leaf in frontier) {
+                if (leaf in removed) continue
+                removed.add(leaf)
+                for (nb in adj[leaf] ?: emptySet<Long>()) {
+                    val nbAdj = adj[nb] ?: continue
+                    nbAdj.remove(leaf)
+                    if (nbAdj.size <= 1 && nb != startCell && nb !in removed) next.add(nb)
+                }
+            }
+            frontier = next
+        }
+        if (removed.isEmpty()) return points
+
+        val kept = mutableListOf<Pair<Double, Double>>()
+        for (sample in samples) {
+            if (cellOf(sample) in removed) continue
+            kept.add(sample)
+        }
+        // A route that was ALL spur (a pure out-and-back from the start)
+        // would collapse to nothing — hand it back unchanged and let scoring
+        // condemn it instead.
+        return if (kept.size >= 4) kept else points
+    }
+
+    /**
+     * A forbidden corridor for avoid_polygons: small squares laid every ~200m
+     * along a leg's geometry, skipping any square within [reliefM] of a stop
+     * so later legs can still depart from and arrive at shared junctions.
+     * Tiny squares keep every polygon far inside ORS's per-polygon extent and
+     * area caps, and ~240m of width blocks the road actually ridden without
+     * walling off the neighbourhood grid.
+     */
+    private fun buildAvoidCorridor(
+        legPoints: List<Pair<Double, Double>>,
+        reliefCenters: List<Pair<Double, Double>>,
+        halfWidthM: Double = 120.0,
+        reliefM: Double = 350.0
+    ): List<List<Pair<Double, Double>>> {
+        if (legPoints.size < 2) return emptyList()
+        val rings = mutableListOf<List<Pair<Double, Double>>>()
+        val samples = interpolatePolyline(legPoints, 200.0)
+        val latRef = Math.toRadians(legPoints.first().first)
+        val dLat = halfWidthM / 110_540.0
+        val dLng = halfWidthM / (111_320.0 * cos(latRef))
+        for (pt in samples) {
+            val nearRelief = reliefCenters.any {
+                haversineDistance(it.first, it.second, pt.first, pt.second) < reliefM
+            }
+            if (nearRelief) continue
+            rings.add(
+                listOf(
+                    Pair(pt.first - dLat, pt.second - dLng),
+                    Pair(pt.first - dLat, pt.second + dLng),
+                    Pair(pt.first + dLat, pt.second + dLng),
+                    Pair(pt.first + dLat, pt.second - dLng),
+                    Pair(pt.first - dLat, pt.second - dLng)
+                )
+            )
+        }
+        return rings
+    }
+
+    private fun ringsToMultiPolygon(rings: List<List<Pair<Double, Double>>>): JsonObject =
+        buildJsonObject {
+            put("type", "MultiPolygon")
+            put("coordinates", buildJsonArray {
+                for (ring in rings) {
+                    add(buildJsonArray {
+                        add(buildJsonArray {
+                            for (pt in ring) {
+                                add(buildJsonArray {
+                                    add(pt.second) // lng
+                                    add(pt.first)  // lat
+                                })
+                            }
+                        })
+                    })
+                }
+            })
+        }
+
+    /**
+     * Routes start→W1→…→Wn→start ONE LEG AT A TIME, each leg barred via
+     * avoid_polygons from the roads earlier legs used — a hard version of the
+     * reuse penalty routing engines apply internally during their search,
+     * which the plain directions API entirely lacks (its legs have no memory
+     * of each other; that gap was the main residual spur source). A leg that
+     * avoidance makes unroutable — a lone bridge, a funnelled start — retries
+     * without it: reuse beats no route, matching how the engines' own soft
+     * penalties behave.
+     */
+    private suspend fun routeGuidedLoop(
+        apiKey: String,
+        stops: List<Pair<Double, Double>>, // lat/lng: start, W1..Wn, start
+        steepness: Int
+    ): RouteResult? {
+        val allPoints = mutableListOf<Pair<Double, Double>>()
+        var distance = 0.0
+        var duration = 0.0
+        var ascent = 0.0
+        val corridor = mutableListOf<List<Pair<Double, Double>>>()
+        val relief = stops.dropLast(1) // start + waypoints (last stop == first)
+
+        for (i in 0 until stops.size - 1) {
+            val a = stops[i]
+            val b = stops[i + 1]
+            val coords = listOf(Pair(a.second, a.first), Pair(b.second, b.first))
+            val avoid = if (corridor.isEmpty()) null else ringsToMultiPolygon(corridor)
+            val leg = orsClient.getRoute(apiKey, coords, steepness, avoid)
+                ?: orsClient.getRoute(apiKey, coords, steepness, null)
+                ?: return null
+
+            val pts = PolylineUtils.decodePolyline(leg.encodedPolyline)
+            if (pts.size < 2) return null
+            if (allPoints.isEmpty()) allPoints.addAll(pts) else allPoints.addAll(pts.drop(1))
+            distance += leg.distanceMeters
+            duration += leg.durationSeconds
+            ascent += leg.ascentMeters
+            corridor.addAll(buildAvoidCorridor(pts, relief))
+        }
+        if (allPoints.size < 4) return null
+        return RouteResult(PolylineUtils.encodePolyline(allPoints), distance, duration, 0.0, ascent)
+    }
+
+    /**
      * Prune, measure and score one ORS route as a tournament candidate.
-     * Shared by both candidate sources — random round trips and
-     * heatmap-guided waypoint loops — so they compete under identical rules.
+     * Shared by both candidate sources — guided loops and random round
+     * trips — so they compete under identical rules.
      */
     private fun scoreCandidate(
         routeResult: RouteResult,
@@ -435,32 +603,35 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
         val decoded = PolylineUtils.decodePolyline(routeResult.encodedPolyline)
         if (decoded.size < 4) return null
 
-        // Snip clean mid-route spurs first; scoring judges what pruning
-        // cannot fix (chiefly the start/finish stem).
-        var pts = decoded
+        // Repair pass 1: topological tail removal (any-width out-and-backs).
+        // Repair pass 2: the proximity pruner, for thin same-corridor loops
+        // the graph view sees as legitimate cycles.
+        var pts = removeSpurTails(decoded)
+        if (pts.size > 4 && detectSpurs(pts).hasSpur) {
+            val pruned = pruneSpurs(pts)
+            if (pruned.size < pts.size) pts = pruned
+        }
+
         var distance = routeResult.distanceMeters
         var duration = routeResult.durationSeconds
         var ascent = routeResult.ascentMeters
-        if (detectSpurs(decoded).hasSpur) {
-            val pruned = pruneSpurs(decoded)
-            if (pruned.size < decoded.size) {
-                var d = 0.0
-                for (i in 1 until pruned.size) {
-                    d += haversineDistance(
-                        pruned[i - 1].first, pruned[i - 1].second,
-                        pruned[i].first, pruned[i].second
-                    )
-                }
-                if (d > 0.0 && distance > 0.0) {
-                    // Scale climb with the cut too, else a pruned spur's
-                    // ascent inflates climb-per-km for exactly the
-                    // candidates that needed pruning.
-                    duration *= d / distance
-                    ascent *= d / distance
-                }
-                distance = d
-                pts = pruned
+        if (pts !== decoded) {
+            var d = 0.0
+            for (i in 1 until pts.size) {
+                d += haversineDistance(
+                    pts[i - 1].first, pts[i - 1].second,
+                    pts[i].first, pts[i].second
+                )
             }
+            if (d > 0.0 && distance > 0.0) {
+                val ratio = d / distance
+                // Scale time and climb with the cut, else a pruned spur's
+                // ascent inflates climb-per-km for exactly the candidates
+                // that needed repair.
+                duration *= ratio
+                ascent *= ratio
+            }
+            distance = if (d > 0.0) d else distance
         }
 
         val retrace = retraceFraction(pts)
@@ -475,16 +646,20 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
             TerrainPreference.HILLY -> max(0.0, (12.0 - climbPerKm) / 20.0)
         }
         val familiarity = if (useHeatmap) heatmap!!.familiarity(pts) else null
+        // A spur on familiar roads is still a spur: the familiarity bonus
+        // fades to nothing as retracing rises, so it can never subsidise
+        // doubling back (previously a fully-familiar candidate could absorb
+        // 30% retrace on the bonus alone).
+        val famBonus = familiarity?.let { it * (1.0 - min(1.0, retrace * 5.0)) }
 
         // Retracing dominates: a clean loop 15% off target beats a
-        // spur-ridden one bang on distance. Familiarity pulls toward known
-        // roads without ever outvoting spur-freedom.
+        // spur-ridden one bang on distance.
         val score = 4.0 * retrace +
             2.0 * min(1.0, unpavedFrac * 10.0) +
             distFit +
             terrainPenalty +
             0.3 * (1.0 - min(1.0, round / 0.55)) +
-            (if (familiarity != null) 1.2 * (1.0 - familiarity) else 0.0)
+            (if (famBonus != null) 1.2 * (1.0 - famBonus) else 0.0)
 
         val candidate = LoopRouteResult(
             encodedPolyline = PolylineUtils.encodePolyline(pts),
@@ -502,12 +677,12 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
 
     /**
      * Candidate tournament with two sources. Heatmap-GUIDED candidates route
-     * through waypoints picked on the rider's own ridden roads, so familiarity
-     * is built in rather than hoped for; random round trips fill the field and
-     * cover ground the history does not. Every candidate is scored under the
-     * same rules (retracing weighted heaviest, then surface, distance fit,
-     * terrain match, roundness, familiarity) and the best of the whole field
-     * wins. The tournament ends early only once a spotless leader exists.
+     * leg-by-leg through waypoints picked on the rider's own ridden roads,
+     * with earlier legs' corridors forbidden to later legs; random round
+     * trips fill the field where history is thin. Everything competes under
+     * identical scoring, and — the Strava trade, adopted deliberately — the
+     * final pick is loose on distance, strict on quality: a clean loop within
+     * 25% of target always beats a spurred one bang on distance.
      */
     suspend fun generateLoopRoute(
         apiKey: String,
@@ -517,9 +692,6 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
         heatmap: RideHeatmap? = null,
         onStatusUpdate: (String) -> Unit = {}
     ): LoopRouteResult? = withContext(Dispatchers.Default) {
-        // Familiarity only means something where the rider has history; a start
-        // in fresh territory silently drops the term rather than zeroing every
-        // candidate equally-uselessly.
         val useHeatmap = heatmap != null && !heatmap.isEmpty &&
             heatmap.hasCoverageNear(startLat, startLng)
         val toleranceMeters = max(500.0, targetDistanceMeters * 0.1)
@@ -527,6 +699,8 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
         var best: LoopRouteResult? = null
         var bestScore = Double.MAX_VALUE
         var bestTerrainPenalty = 0.0
+        var bestClean: LoopRouteResult? = null
+        var bestCleanScore = Double.MAX_VALUE
         var attempt = 0
 
         fun consider(scored: Scored?) {
@@ -536,9 +710,25 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
                 best = scored.result
                 bestTerrainPenalty = scored.terrainPenalty
             }
+            val cleanDistFit =
+                abs(scored.result.distanceMeters - targetDistanceMeters) / targetDistanceMeters
+            if (scored.result.retraceFraction < 0.02 && cleanDistFit <= 0.25 &&
+                scored.score < bestCleanScore
+            ) {
+                bestCleanScore = scored.score
+                bestClean = scored.result
+            }
         }
 
-        // ── Source 1: heatmap-guided loops through the rider's own roads ──
+        fun leaderIsSpotless(): Boolean {
+            val leader = best ?: return false
+            return leader.retraceFraction < 0.02 &&
+                abs(leader.distanceMeters - targetDistanceMeters) <= toleranceMeters &&
+                !leader.hadSpurWarning &&
+                bestTerrainPenalty <= 0.15
+        }
+
+        // ── Source 1: guided loops on the rider's own roads, leg-by-leg ──
         if (useHeatmap) {
             val radiusFactors = listOf(1.0, 0.85, 1.15)
             for (f in radiusFactors) {
@@ -550,42 +740,44 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
                     sectors = 4, rotationDeg = rotation
                 )
                 if (waypoints.size < 3) continue
-                val coords = buildList {
-                    add(Pair(startLng, startLat))
-                    waypoints.forEach { add(Pair(it.second, it.first)) }
-                    add(Pair(startLng, startLat))
+                // Cell centers sit up to ~17m off the ridden road; snapping
+                // stops ORS attaching a waypoint to a parallel driveway and
+                // micro-out-and-backing to touch it.
+                val snapped = waypoints.map { snapToNearestRoad(it.first, it.second) }
+                val stops = buildList {
+                    add(Pair(startLat, startLng))
+                    addAll(snapped)
+                    add(Pair(startLat, startLng))
                 }
-                val routeResult = orsClient.getRoute(apiKey, coords, terrain.steepnessDifficulty) ?: continue
+                val routeResult = routeGuidedLoop(apiKey, stops, terrain.steepnessDifficulty) ?: continue
                 consider(scoreCandidate(routeResult, targetDistanceMeters, terrain, heatmap, useHeatmap))
+                // A spotless guided loop is the whole point — stop here.
+                if (leaderIsSpotless()) break
             }
         }
 
         // ── Source 2: random round trips, filling the field ──
-        // ORS treats round-trip length as a suggestion and usually overshoots;
-        // pairing seeds with correction factors keeps the field near target.
-        val correctionFactors = listOf(1.0, 0.82, 1.0, 0.82, 0.75, 1.0, 0.82, 0.68)
-        for ((attemptIdx, factor) in correctionFactors.withIndex()) {
-            attempt++
-            onStatusUpdate("Trying loops ($attempt)...")
-            val seed = Random.nextInt(100000)
-            val routeResult = orsClient.getRoundTripRoute(
-                apiKey, startLng, startLat,
-                targetDistanceMeters * factor, seed, terrain.steepnessDifficulty
-            ) ?: continue
-            consider(scoreCandidate(routeResult, targetDistanceMeters, terrain, heatmap, useHeatmap))
-
-            // Field of at least three round trips, then stop as soon as the
-            // leader is spotless: no measurable retracing, on distance, paved,
-            // and true to the terrain wish.
-            val leader = best
-            if (attemptIdx >= 2 && leader != null &&
-                leader.retraceFraction < 0.02 &&
-                abs(leader.distanceMeters - targetDistanceMeters) <= toleranceMeters &&
-                !leader.hadSpurWarning &&
-                bestTerrainPenalty <= 0.15
-            ) break
+        if (!leaderIsSpotless()) {
+            val correctionFactors = listOf(1.0, 0.82, 1.0, 0.82, 0.75, 1.0, 0.82, 0.68)
+            for ((attemptIdx, factor) in correctionFactors.withIndex()) {
+                attempt++
+                onStatusUpdate("Trying loops ($attempt)...")
+                val seed = Random.nextInt(100000)
+                val routeResult = orsClient.getRoundTripRoute(
+                    apiKey, startLng, startLat,
+                    targetDistanceMeters * factor, seed, terrain.steepnessDifficulty
+                ) ?: continue
+                consider(scoreCandidate(routeResult, targetDistanceMeters, terrain, heatmap, useHeatmap))
+                if (attemptIdx >= 2 && leaderIsSpotless()) break
+            }
         }
 
-        return@withContext best
+        // The quality floor: never hand back a spurred loop while a clean one
+        // within 25% of the asked distance exists.
+        val overall = best
+        val clean = bestClean
+        return@withContext if (clean != null && overall != null &&
+            overall.retraceFraction >= 0.05 && overall !== clean
+        ) clean else overall
     }
 }

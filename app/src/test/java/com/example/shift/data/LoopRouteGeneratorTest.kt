@@ -225,4 +225,66 @@ class LoopRouteGeneratorTest {
         val q = generator.roundness(pts)
         assertTrue("Out-and-back encloses no area, roundness should be ~0, got $q", q < 0.05)
     }
+
+    // ── removeSpurTails: topological out-and-back removal ──────────────
+
+    private fun pathLenM(pts: List<Pair<Double, Double>>): Double {
+        var d = 0.0
+        for (i in 1 until pts.size) {
+            val dy = (pts[i].first - pts[i - 1].first) * 110540.0
+            val dx = (pts[i].second - pts[i - 1].second) * 111320.0 * Math.cos(Math.toRadians(53.0))
+            d += Math.sqrt(dx * dx + dy * dy)
+        }
+        return d
+    }
+
+    @Test
+    fun testTailRemovalCutsMidRouteSpur() {
+        // Square loop with a ~450m out-and-back spur jutting east from the
+        // middle of its east side.
+        val pts = mutableListOf<Pair<Double, Double>>()
+        val lat0 = 53.0
+        val lng0 = -2.0
+        val side = 0.02
+        val n = 50
+        for (i in 0..n) pts.add(Pair(lat0 + side * i / n, lng0))                    // west side N
+        for (i in 0..n / 2) pts.add(Pair(lat0 + side, lng0 + side * i / n))          // top half E
+        // spur: out and back due north from the top edge midpoint
+        val spurBaseLng = lng0 + side * (n / 2) / n.toDouble()
+        for (i in 1..10) pts.add(Pair(lat0 + side + 0.0004 * i, spurBaseLng))
+        for (i in 9 downTo 0) pts.add(Pair(lat0 + side + 0.0004 * i, spurBaseLng))
+        for (i in n / 2 + 1..n) pts.add(Pair(lat0 + side, lng0 + side * i / n))      // top rest E
+        for (i in 0..n) pts.add(Pair(lat0 + side - side * i / n, lng0 + side))       // east side S
+        for (i in 0..n) pts.add(Pair(lat0, lng0 + side - side * i / n))              // bottom W
+
+        val before = pathLenM(pts)
+        val result = generator.removeSpurTails(pts)
+        val after = pathLenM(result)
+        assertTrue("Spur (~900m both ways) should be cut: before=$before after=$after",
+            after < before - 500.0)
+        val frac = generator.retraceFraction(result)
+        assertTrue("Result should be retrace-free, got $frac", frac < 0.05)
+    }
+
+    @Test
+    fun testTailRemovalKeepsCleanLoopIntact() {
+        val loop = squareLoop()
+        val result = generator.removeSpurTails(loop)
+        assertTrue("Clean loop must come back unchanged", result === loop)
+    }
+
+    @Test
+    fun testTailRemovalRefusesToEatPureOutAndBack() {
+        // A pure out-and-back is ALL stem — collapsing it would leave nothing,
+        // so it must come back unchanged for scoring to condemn instead.
+        val pts = mutableListOf<Pair<Double, Double>>()
+        var lat = 53.0
+        for (i in 0..100) { pts.add(Pair(lat, -2.0)); lat += 0.00045 }
+        for (i in 0..100) { lat -= 0.00045; pts.add(Pair(lat, -2.0)) }
+        val result = generator.removeSpurTails(pts)
+        assertTrue(
+            "Pure out-and-back should be returned unchanged, got ${'$'}{result.size} vs ${'$'}{pts.size}",
+            pathLenM(result) > pathLenM(pts) * 0.9
+        )
+    }
 }

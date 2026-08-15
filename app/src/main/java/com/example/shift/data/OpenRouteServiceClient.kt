@@ -54,10 +54,16 @@ class OpenRouteServiceClient {
     }
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * [avoidPolygons], when set, is a GeoJSON Polygon/MultiPolygon geometry the
+     * route must not cross — the lever that lets a loop's later legs be
+     * physically barred from reusing earlier legs' roads.
+     */
     suspend fun getRoute(
         apiKey: String,
         coordinates: List<Pair<Double, Double>>,
-        steepnessDifficulty: Int = 2
+        steepnessDifficulty: Int = 2,
+        avoidPolygons: JsonObject? = null
     ): RouteResult? {
         return withContext(Dispatchers.IO) {
             try {
@@ -81,6 +87,9 @@ class OpenRouteServiceClient {
                             add("ferries")
                             add("steps")
                         })
+                        if (avoidPolygons != null) {
+                            put("avoid_polygons", avoidPolygons)
+                        }
                         put("profile_params", buildJsonObject {
                             put("weightings", buildJsonObject {
                                 put("steepness_difficulty", steepnessDifficulty.coerceIn(0, 3))
