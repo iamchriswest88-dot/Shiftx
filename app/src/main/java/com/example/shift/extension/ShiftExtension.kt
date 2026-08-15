@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class ShiftExtension : KarooExtension("shift-extension", "1.0") {
 
@@ -46,6 +47,12 @@ class ShiftExtension : KarooExtension("shift-extension", "1.0") {
 
         karooSystem.connect { connected ->
             Log.i("ShiftExtension", "KarooSystem connected: $connected")
+        }
+
+        // Sync when the extension comes up, so segments and the fanfare reach
+        // the Karoo even if the app UI is never opened between rides.
+        serviceScope.launch {
+            com.example.shift.data.CloudSyncManager(applicationContext).fullSync()
         }
     }
 

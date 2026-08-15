@@ -92,6 +92,21 @@ class CloudSyncManager(private val context: Context) {
                     Log.w("CloudSync", "Could not scrub legacy settings node", e)
                 }
 
+                // Carry the fanfare melody across: edited on the phone, played by
+                // the Karoo. Newest edit wins, blank counts as an edit too.
+                try {
+                    val cloudFanfare = api.pullFanfare() ?: com.example.shift.api.CloudFanfare()
+                    val localTs = settingsManager.endRideFanfareUpdatedAtFlow.first()
+                    if (cloudFanfare.updatedAt > localTs) {
+                        settingsManager.saveEndRideFanfareFromSync(cloudFanfare.pattern, cloudFanfare.updatedAt)
+                    } else if (localTs > cloudFanfare.updatedAt) {
+                        val localPattern = settingsManager.endRideFanfareFlow.first()
+                        api.pushFanfare(com.example.shift.api.CloudFanfare(localPattern, localTs))
+                    }
+                } catch (e: Exception) {
+                    Log.w("CloudSync", "Fanfare sync failed", e)
+                }
+
                 // Park this device's crash log where a browser can read it —
                 // the Karoo has no other practical way to hand a stack trace over.
                 try {

@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +23,7 @@ class SettingsManager(private val context: Context) {
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
         val AUTO_OPEN_SEGMENT_PAGE = booleanPreferencesKey("auto_open_segment_page")
         val END_RIDE_FANFARE = stringPreferencesKey("end_ride_fanfare")
+        val END_RIDE_FANFARE_TS = longPreferencesKey("end_ride_fanfare_ts")
     }
 
     val apiKeyFlow: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -50,10 +52,17 @@ class SettingsManager(private val context: Context) {
 
     /**
      * Custom segment-completion melody as "frequency:milliseconds" pairs.
-     * Blank falls back to the built-in fanfare. Stored on the device only.
+     * Blank falls back to the built-in fanfare. Unlike the API keys, this is
+     * the one setting that syncs between phone and Karoo — it isn't a secret,
+     * and typing a melody on the Karoo's keyboard is misery.
      */
     val endRideFanfareFlow: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[END_RIDE_FANFARE] ?: ""
+    }
+
+    /** When the fanfare was last edited on this device; newest edit wins the sync. */
+    val endRideFanfareUpdatedAtFlow: Flow<Long> = context.dataStore.data.map { preferences ->
+        preferences[END_RIDE_FANFARE_TS] ?: 0L
     }
 
     suspend fun saveApiKey(apiKey: String) {
@@ -95,6 +104,15 @@ class SettingsManager(private val context: Context) {
     suspend fun saveEndRideFanfare(pattern: String) {
         context.dataStore.edit { preferences ->
             preferences[END_RIDE_FANFARE] = pattern
+            preferences[END_RIDE_FANFARE_TS] = System.currentTimeMillis()
+        }
+    }
+
+    /** Sync write: adopts the other device's melody without claiming a new edit. */
+    suspend fun saveEndRideFanfareFromSync(pattern: String, updatedAt: Long) {
+        context.dataStore.edit { preferences ->
+            preferences[END_RIDE_FANFARE] = pattern
+            preferences[END_RIDE_FANFARE_TS] = updatedAt
         }
     }
 }

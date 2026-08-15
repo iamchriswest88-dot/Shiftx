@@ -2,6 +2,7 @@ package com.example.shift.api
 
 import com.example.shift.data.Course
 import com.example.shift.data.CourseMatch
+import kotlinx.serialization.Serializable
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -34,4 +35,15 @@ interface FirebaseApi {
     // its crash log here where a browser can read it. Stack traces only.
     @PUT("crashlog/{device}.json")
     suspend fun pushCrashLog(@Path("device") device: String, @Body lines: List<String>)
+
+    // The fanfare melody is the one setting that syncs — it's not a secret,
+    // and it's edited on the phone but played by the Karoo.
+    @PUT("fanfare.json")
+    suspend fun pushFanfare(@Body fanfare: CloudFanfare)
+
+    @GET("fanfare.json")
+    suspend fun pullFanfare(): CloudFanfare?
 }
+
+@Serializable
+data class CloudFanfare(val pattern: String = "", val updatedAt: Long = 0L)
