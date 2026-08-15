@@ -482,10 +482,18 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
             if (cellOf(sample) in removed) continue
             kept.add(sample)
         }
-        // A route that was ALL spur (a pure out-and-back from the start)
-        // would collapse to nothing — hand it back unchanged and let scoring
-        // condemn it instead.
-        return if (kept.size >= 4) kept else points
+        // A route that was ALL (or almost all) spur — a pure out-and-back from
+        // the start — collapses to a stub of samples clustered at the start
+        // cell. Judge survival by remaining LENGTH, not point count: hand a
+        // degenerate result back unchanged and let scoring condemn it instead.
+        fun lengthOf(pts: List<Pair<Double, Double>>): Double {
+            var d = 0.0
+            for (i in 1 until pts.size) {
+                d += haversineDistance(pts[i - 1].first, pts[i - 1].second, pts[i].first, pts[i].second)
+            }
+            return d
+        }
+        return if (kept.size >= 4 && lengthOf(kept) >= lengthOf(samples) * 0.25) kept else points
     }
 
     /**
