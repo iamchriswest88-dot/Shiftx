@@ -23,6 +23,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.example.shift.theme.MicroLabelStyle
+import com.example.shift.theme.RouteLineColor
 import com.example.shift.theme.ShiftDarkSurface
 import com.example.shift.theme.ShiftOrange
 import com.example.shift.theme.ShiftTextMuted
@@ -222,6 +223,58 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                                 StatCard("MILES", "%.1f".format(route.distanceMeters * 0.000621371), Modifier.weight(1f))
                                 StatCard("EST MIN", "${route.durationSeconds.toInt() / 60}", Modifier.weight(1f), accent = true)
                                 StatCard("ELEV FT", "%,.0f".format(route.ascentMeters * 3.28084), Modifier.weight(1f))
+                            }
+                        }
+
+                        // Elevation profile of the selected ride — same voice as the
+                        // activity drawer's graph: route-blue line on the sheet ground.
+                        route.elevationProfile?.takeIf { it.size > 2 }?.let { profile ->
+                            Spacer(modifier = Modifier.height(10.dp))
+                            val surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+                            androidx.compose.foundation.Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(90.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(surfaceColor)
+                            ) {
+                                val w = size.width
+                                val h = size.height
+                                val minE = profile.minOf { it.second }
+                                val maxE = profile.maxOf { it.second }
+                                val range = if (maxE - minE < 1.0) 1.0 else maxE - minE
+                                val maxD = profile.last().first.coerceAtLeast(1.0)
+
+                                val fill = androidx.compose.ui.graphics.Path()
+                                fill.moveTo(0f, h)
+                                for ((d, e) in profile) {
+                                    fill.lineTo(
+                                        ((d / maxD) * w).toFloat(),
+                                        (h - ((e - minE) / range) * h * 0.85f).toFloat()
+                                    )
+                                }
+                                fill.lineTo(w, h)
+                                fill.close()
+                                drawPath(
+                                    fill,
+                                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                                        colors = listOf(
+                                            RouteLineColor.copy(alpha = 0.5f),
+                                            androidx.compose.ui.graphics.Color.Transparent
+                                        )
+                                    )
+                                )
+                                val line = androidx.compose.ui.graphics.Path()
+                                profile.forEachIndexed { idx, (d, e) ->
+                                    val x = ((d / maxD) * w).toFloat()
+                                    val y = (h - ((e - minE) / range) * h * 0.85f).toFloat()
+                                    if (idx == 0) line.moveTo(x, y) else line.lineTo(x, y)
+                                }
+                                drawPath(
+                                    line,
+                                    color = RouteLineColor,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                                )
                             }
                         }
 

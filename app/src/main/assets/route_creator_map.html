@@ -108,6 +108,28 @@
                 });
                 routeLayer.addLayer(polyline);
 
+                // Direction arrows along the loop so riding order is obvious
+                // at a glance. Plain rotated glyphs — no plugin needed.
+                var n = latlngs.length;
+                if (n > 10) {
+                    for (var f = 0.08; f < 0.97; f += 0.15) {
+                        var i = Math.floor(f * (n - 1));
+                        var j = Math.min(n - 1, i + 3);
+                        if (i === j) continue;
+                        var dLat = latlngs[j][0] - latlngs[i][0];
+                        var dLng = (latlngs[j][1] - latlngs[i][1]) * Math.cos(latlngs[i][0] * Math.PI / 180);
+                        var bearing = Math.atan2(dLng, dLat) * 180 / Math.PI;
+                        var icon = L.divIcon({
+                            className: '',
+                            html: '<div style="transform:rotate(' + bearing + 'deg);font-size:14px;line-height:14px;' +
+                                  'color:#0B87AD;text-shadow:0 0 3px #fff, 0 0 3px #fff;">▲</div>',
+                            iconSize: [14, 14],
+                            iconAnchor: [7, 7]
+                        });
+                        routeLayer.addLayer(L.marker([latlngs[i][0], latlngs[i][1]], {icon: icon, interactive: false}));
+                    }
+                }
+
                 var bounds = polyline.getBounds();
                 if (startMarker) bounds.extend(startMarker.getLatLng());
                 map.fitBounds(bounds, {padding: [40, 40]});

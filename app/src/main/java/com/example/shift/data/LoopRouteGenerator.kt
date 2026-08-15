@@ -20,7 +20,9 @@ data class LoopRouteResult(
     /** Fraction of the route riding a corridor it already rode the other way. */
     val retraceFraction: Double = 0.0,
     /** Fraction of the route on roads the rider has ridden before; null = no heatmap coverage here. */
-    val familiarity: Double? = null
+    val familiarity: Double? = null,
+    /** (cumulative metres, elevation metres) along the route, thinned for display. */
+    val elevationProfile: List<Pair<Double, Double>>? = null
 )
 
 /** Rider's terrain wish, mapped to ORS steepness bands and to candidate scoring. */
@@ -577,6 +579,7 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
         steepness: Int
     ): RouteResult? {
         val allPoints = mutableListOf<Pair<Double, Double>>()
+        val allElevations = mutableListOf<Double>()
         var distance = 0.0
         var duration = 0.0
         var ascent = 0.0
@@ -594,14 +597,86 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
 
             val pts = PolylineUtils.decodePolyline(leg.encodedPolyline)
             if (pts.size < 2) return null
-            if (allPoints.isEmpty()) allPoints.addAll(pts) else allPoints.addAll(pts.drop(1))
+            val legEle = if (leg.elevations.size == pts.size) leg.elevations else List(pts.size) { 0.0 }
+            if (allPoints.isEmpty()) {
+                allPoints.addAll(pts)
+                allElevations.addAll(legEle)
+            } else {
+                allPoints.addAll(pts.drop(1))
+                allElevations.addAll(legEle.drop(1))
+            }
             distance += leg.distanceMeters
             duration += leg.durationSeconds
             ascent += leg.ascentMeters
             corridor.addAll(buildAvoidCorridor(pts, relief))
         }
         if (allPoints.size < 4) return null
-        return RouteResult(PolylineUtils.encodePolyline(allPoints), distance, duration, 0.0, ascent)
+        return RouteResult(
+            PolylineUtils.encodePolyline(allPoints), distance, duration, 0.0, ascent, allElevations
+        )
+    }
+
+    /**
+     * Elevation profile (cumulative metres → elevation metres) for the FINAL
+     * route geometry. Repair passes resample the line, so each final point
+     * takes the elevation of the nearest original point via a coarse grid —
+     * exact alignment survives only unrepaired routes, and 50m granularity is
+     * ample for a phone-width graph. Thinned to ~200 samples for the UI.
+     */
+    private fun buildElevationProfile(
+        pts: List<Pair<Double, Double>>,
+        original: List<Pair<Double, Double>>,
+        elevations: List<Double>
+    ): List<Pair<Double, Double>>? {
+        if (elevations.size != original.size || original.isEmpty() || pts.size < 2) return null
+
+        val latRef = Math.toRadians(original[0].first)
+        val mLat = 110_540.0
+        val mLng = 111_320.0 * cos(latRef)
+        val cellM = 50.0
+        fun key(lat: Double, lng: Double): Long {
+            val cx = floor(lng * mLng / cellM).toInt()
+            val cy = floor(lat * mLat / cellM).toInt()
+            return (cx.toLong() shl 32) or (cy.toLong() and 0xFFFFFFFFL)
+        }
+        val grid = HashMap<Long, Int>()
+        for (i in original.indices) grid.putIfAbsent(key(original[i].first, original[i].second), i)
+
+        val out = ArrayList<Pair<Double, Double>>(pts.size)
+        var cum = 0.0
+        var lastEle = elevations.first()
+        for (i in pts.indices) {
+            if (i > 0) {
+                cum += haversineDistance(
+                    pts[i - 1].first, pts[i - 1].second, pts[i].first, pts[i].second
+                )
+            }
+            val cx = floor(pts[i].second * mLng / cellM).toInt()
+            val cy = floor(pts[i].first * mLat / cellM).toInt()
+            var found = -1
+            outer@ for (dx in -1..1) {
+                for (dy in -1..1) {
+                    val g = grid[((cx + dx).toLong() shl 32) or ((cy + dy).toLong() and 0xFFFFFFFFL)]
+                    if (g != null) {
+                        found = g
+                        break@outer
+                    }
+                }
+            }
+            if (found >= 0) lastEle = elevations[found]
+            out.add(Pair(cum, lastEle))
+        }
+
+        if (out.size <= 200) return out
+        val step = out.size / 200.0
+        val thin = ArrayList<Pair<Double, Double>>(202)
+        var t = 0.0
+        while (t < out.size) {
+            thin.add(out[t.toInt()])
+            t += step
+        }
+        if (thin.last() != out.last()) thin.add(out.last())
+        return thin
     }
 
     /**
@@ -712,7 +787,8 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
             spurCoordinates = null,
             ascentMeters = ascent,
             retraceFraction = retrace,
-            familiarity = familiarity
+            familiarity = familiarity,
+            elevationProfile = buildElevationProfile(pts, decoded, routeResult.elevations)
         )
         return Scored(score, terrainPenalty, candidate)
     }

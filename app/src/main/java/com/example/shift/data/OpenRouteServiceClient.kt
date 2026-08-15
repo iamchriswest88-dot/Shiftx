@@ -13,24 +13,30 @@ data class RouteResult(
     val distanceMeters: Double,
     val durationSeconds: Double,
     val unpavedDistanceMeters: Double = 0.0,
-    val ascentMeters: Double = 0.0
+    val ascentMeters: Double = 0.0,
+    /** Per-point elevation in metres, aligned with the decoded polyline. */
+    val elevations: List<Double> = emptyList()
 )
 
 class OpenRouteServiceClient {
     private val client = OkHttpClient()
 
+    private class Poly3d(val encoded2d: String, val elevations: List<Double>)
+
     /**
      * With elevation=true ORS encodes THREE values per point (lat, lng, ele) in
      * the polyline. The app's decoder is two-dimensional and would mis-decode it
-     * into garbage coordinates, so the third dimension is stripped here and the
-     * rest of the app receives the 2D encoding it has always expected.
+     * into garbage coordinates, so the geometry is re-encoded 2D here — and the
+     * elevations, once thrown away, are kept for profile display (ele is
+     * encoded at 1e2 precision, i.e. centimetres).
      */
-    private fun stripElevationDimension(encoded3d: String): String {
+    private fun decode3d(encoded3d: String): Poly3d {
         var index = 0
         var lat = 0
         var lng = 0
         var ele = 0
         val points = mutableListOf<Pair<Double, Double>>()
+        val elevations = mutableListOf<Double>()
 
         fun nextVarint(): Int {
             var result = 0
@@ -49,8 +55,9 @@ class OpenRouteServiceClient {
             lng += nextVarint()
             ele += nextVarint()
             points.add(Pair(lat / 1e5, lng / 1e5))
+            elevations.add(ele / 1e2)
         }
-        return com.example.shift.utils.PolylineUtils.encodePolyline(points)
+        return Poly3d(com.example.shift.utils.PolylineUtils.encodePolyline(points), elevations)
     }
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -123,8 +130,9 @@ class OpenRouteServiceClient {
                             val ascent = summary?.get("ascent")?.jsonPrimitive?.doubleOrNull ?: 0.0
 
                             if (geometry != null) {
+                                val poly = decode3d(geometry)
                                 return@withContext RouteResult(
-                                    stripElevationDimension(geometry), distance, duration, 0.0, ascent
+                                    poly.encoded2d, distance, duration, 0.0, ascent, poly.elevations
                                 )
                             }
                         }
@@ -233,9 +241,10 @@ class OpenRouteServiceClient {
                             }
 
                             if (geometry != null) {
+                                val poly = decode3d(geometry)
                                 return@withContext RouteResult(
-                                    stripElevationDimension(geometry),
-                                    distance, duration, unpavedDistance, ascent
+                                    poly.encoded2d,
+                                    distance, duration, unpavedDistance, ascent, poly.elevations
                                 )
                             }
                         }
