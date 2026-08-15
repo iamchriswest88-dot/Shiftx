@@ -203,7 +203,10 @@ class MainActivity : ComponentActivity() {
 
                             // Floating Blur Pill Navigation Overlay
                             FloatingBottomNav(
-                                hazeState = hazeState,
+                                // The Routes tab holds a WebView, which backdrop blur
+                                // re-samples on its own timing — flicker. Frost the pill
+                                // over Compose pages only.
+                                hazeState = if (tabs.getOrNull(pagerState.currentPage) == "Routes") null else hazeState,
                                 tabs = tabs,
                                 tabIcons = tabIconsSelected,
                                 selectedIndex = pagerState.currentPage,

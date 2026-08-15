@@ -32,11 +32,6 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.example.shift.theme.MicroLabelStyle
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
 import com.example.shift.theme.RouteLineColor
 import com.example.shift.theme.ShiftDarkSurface
 import com.example.shift.theme.ShiftOrange
@@ -87,32 +82,20 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
     )
     val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
 
-    // Frosted drawer, same as the activity map: the map blurs through the sheet.
-    val hazeState = remember { HazeState() }
-    val sheetHazeStyle = HazeStyle(
-        backgroundColor = MaterialTheme.colorScheme.surface,
-        tints = listOf(HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))),
-        blurRadius = 24.dp,
-        noiseFactor = 0f
-    )
-
     BottomSheetScaffold(
         scaffoldState = scaffoldState,
-        sheetContainerColor = Color.Transparent,
+        sheetContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
         sheetContentColor = MaterialTheme.colorScheme.onSurface,
         sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         sheetPeekHeight = 360.dp,
-        sheetDragHandle = {},
         sheetContent = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .hazeEffect(hazeState, sheetHazeStyle)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 8.dp)
                     .navigationBarsPadding()
             ) {
-                SheetHandleBar()
                 Text(
                     text = "Route Planner",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
@@ -406,7 +389,7 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
             }
         }
     ) { _ ->
-        BoxWithConstraints(modifier = Modifier.fillMaxSize().hazeSource(hazeState)) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             // Keep the whole route in the strip above the drawer: as the sheet
             // moves (or a different ride is selected), re-fit with bottom
             // padding equal to the sheet overlap — same trick as the activity
