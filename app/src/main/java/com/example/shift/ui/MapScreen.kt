@@ -165,7 +165,9 @@ fun MapScreen(
 
         BottomSheetScaffold(
             scaffoldState = scaffoldState,
-            sheetContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+            // Thin enough that the map's in-page frosted strip (#frost in
+            // leaflet_map.html) reads through — that's where the blur lives.
+            sheetContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
             sheetContentColor = MaterialTheme.colorScheme.onSurface,
             sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
             // Taller so the second stats row (avg mph, avg W, TSS) is visible without
@@ -591,6 +593,12 @@ fun MapScreen(
 
                                 webViewClient = object : WebViewClient() {
                                     override fun onPageFinished(view: WebView?, url: String?) {
+                                        // Size the frosted strip for the sheet's initial
+                                        // position — refit() only fires again on drags.
+                                        view?.evaluateJavascript(
+                                            "if (typeof refit === 'function') refit($sheetOverlapCssPx);",
+                                            null
+                                        )
                                         if (latlngs.isNotEmpty()) {
                                             view?.evaluateJavascript("if (typeof drawRoute === 'function') drawRoute($jsonArray, false);", null)
                                         } else {

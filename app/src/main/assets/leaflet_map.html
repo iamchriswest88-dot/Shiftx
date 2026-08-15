@@ -31,10 +31,27 @@
             color: #fff;
         }
         .leaflet-control-zoom { display: none !important; }
+        /* Frosted strip under the app's bottom drawer. The drawer itself is a
+           translucent Compose sheet; blurring the map from Compose flickers
+           (the WebView repaints on its own schedule), so the blur is done here
+           in the page, where Chromium composites it with the map natively. */
+        #frost {
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            height: 0;
+            border-radius: 24px 24px 0 0;
+            backdrop-filter: blur(18px) saturate(1.4);
+            -webkit-backdrop-filter: blur(18px) saturate(1.4);
+            background: rgba(255, 255, 255, 0.35);
+            pointer-events: none;
+            z-index: 2000;
+            transition: height 140ms ease-out;
+        }
     </style>
 </head>
 <body>
     <div id="map"></div>
+    <div id="frost"></div>
     <script>
         var map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -52,8 +69,9 @@
         // only the framing changes.
         function refit(bottomPad) {
             map.invalidateSize();
+            var pad = (typeof bottomPad === 'number' && isFinite(bottomPad) && bottomPad > 0) ? bottomPad : 0;
+            document.getElementById('frost').style.height = pad + 'px';
             if (lastBounds && lastBounds.isValid()) {
-                var pad = (typeof bottomPad === 'number' && isFinite(bottomPad) && bottomPad > 0) ? bottomPad : 0;
                 map.fitBounds(lastBounds, {
                     paddingTopLeft: [30, 30],
                     paddingBottomRight: [30, 30 + pad]

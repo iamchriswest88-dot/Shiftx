@@ -32,10 +32,26 @@
             border: 2px solid rgba(255, 199, 0, 0.9);
             box-shadow: 0 1px 4px rgba(0,0,0,0.3);
         }
+        /* Frosted strip under the planner's bottom sheet — blur done in-page
+           because sampling the WebView from Compose flickers. Matches the
+           activity map's #frost. */
+        #frost {
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            height: 0;
+            border-radius: 24px 24px 0 0;
+            backdrop-filter: blur(18px) saturate(1.4);
+            -webkit-backdrop-filter: blur(18px) saturate(1.4);
+            background: rgba(255, 255, 255, 0.35);
+            pointer-events: none;
+            z-index: 2000;
+            transition: height 140ms ease-out;
+        }
     </style>
 </head>
 <body>
     <div id="map"></div>
+    <div id="frost"></div>
     <script>
         var map = L.map('map', { zoomControl: false }).setView([53.8, -1.5], 10);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -146,6 +162,7 @@
         function refit(bottomPad) {
             map.invalidateSize();
             lastPad = (typeof bottomPad === 'number' && isFinite(bottomPad) && bottomPad > 0) ? bottomPad : 0;
+            document.getElementById('frost').style.height = lastPad + 'px';
             if (lastBounds) {
                 map.fitBounds(lastBounds, {paddingTopLeft: [40, 40], paddingBottomRight: [40, 40 + lastPad]});
             }
