@@ -96,4 +96,34 @@ class RideHeatmapTest {
         val wps = hm.waypointsNear(53.0, -2.0, targetLoopMeters = 60_000.0)
         assertTrue("No ridden cells near a 7km ring — expected none, got ${wps.size}", wps.isEmpty())
     }
+
+    @Test
+    fun testDirectedWaypointsBulgeTheChosenWay() {
+        // Same square of ridden roads as the undirected test, start at its
+        // centre — but with a NORTH wish the ring shifts one radius north, so
+        // every waypoint must come from the square's northern half. The south
+        // side (lat 53.0) is well inside ridden history yet must not appear.
+        val pts = mutableListOf<Pair<Double, Double>>()
+        val lat0 = 53.0
+        val lng0 = -2.0
+        val side = 0.02
+        val n = 60
+        for (i in 0..n) pts.add(Pair(lat0 + side * i / n, lng0))
+        for (i in 0..n) pts.add(Pair(lat0 + side, lng0 + side * i / n))
+        for (i in 0..n) pts.add(Pair(lat0 + side - side * i / n, lng0 + side))
+        for (i in 0..n) pts.add(Pair(lat0, lng0 + side - side * i / n))
+        val hm = RideHeatmap.build(listOf(PolylineUtils.encodePolyline(pts)))
+
+        val wps = hm.waypointsNear(
+            53.01, -1.99, targetLoopMeters = 4490.0,
+            sectors = 4, rotationDeg = 0.0, directionDeg = 0.0
+        )
+        assertTrue("Expected northern waypoints, got ${wps.size}", wps.size >= 2)
+        for (wp in wps) {
+            assertTrue(
+                "Waypoint $wp is in the southern half despite a NORTH wish",
+                wp.first > 53.004
+            )
+        }
+    }
 }

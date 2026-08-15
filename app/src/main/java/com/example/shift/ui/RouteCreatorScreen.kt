@@ -40,6 +40,7 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
     val targetDistanceMiles by viewModel.targetDistanceMiles.collectAsState()
     val terrain by viewModel.terrain.collectAsState()
     val terrainRoutes by viewModel.terrainRoutes.collectAsState()
+    val direction by viewModel.direction.collectAsState()
     val generatedRoute by viewModel.generatedRoute.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
@@ -183,6 +184,40 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
+                    // Compass wish — the general direction the loop should head.
+                    Text(
+                        "Direction",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = direction == null,
+                            onClick = { viewModel.setDirection(null) },
+                            label = { Text("Any", fontWeight = if (direction == null) FontWeight.Bold else FontWeight.Normal) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(0xFFFFC700),
+                                selectedLabelColor = Color(0xFF0F1417)
+                            )
+                        )
+                        com.example.shift.data.RideDirection.entries.forEach { dir ->
+                            val selected = direction == dir
+                            FilterChip(
+                                selected = selected,
+                                onClick = { viewModel.setDirection(dir) },
+                                label = { Text(dir.arrow, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFFFFC700),
+                                    selectedLabelColor = Color(0xFF0F1417)
+                                )
+                            )
+                        }
+                    }
+
                     Text(
                         "Target Distance: ${targetDistanceMiles.toInt()} mi",
                         style = MaterialTheme.typography.titleMedium,

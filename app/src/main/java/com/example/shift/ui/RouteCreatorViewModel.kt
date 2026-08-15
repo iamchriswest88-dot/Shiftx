@@ -46,6 +46,19 @@ class RouteCreatorViewModel(
     private val _terrain = MutableStateFlow(com.example.shift.data.TerrainPreference.ROLLING)
     val terrain: StateFlow<com.example.shift.data.TerrainPreference> = _terrain
 
+    // Compass wish: null = anywhere. Changing it invalidates the current trio
+    // (they answered a different question) but does not auto-regenerate.
+    private val _direction = MutableStateFlow<com.example.shift.data.RideDirection?>(null)
+    val direction: StateFlow<com.example.shift.data.RideDirection?> = _direction
+
+    fun setDirection(dir: com.example.shift.data.RideDirection?) {
+        if (_direction.value == dir) return
+        _direction.value = dir
+        generationToken++
+        _generatedRoute.value = null
+        _terrainRoutes.value = null
+    }
+
     // One generation now produces a route per terrain; the rider picks after.
     private val _terrainRoutes =
         MutableStateFlow<Map<com.example.shift.data.TerrainPreference, LoopRouteResult>?>(null)
@@ -132,6 +145,7 @@ class RouteCreatorViewModel(
                         terrain = pref,
                         heatmap = heatmap,
                         quick = true,
+                        direction = _direction.value,
                         onStatusUpdate = { status -> _statusMessage.value = "$label: $status" }
                     )
                     if (result != null) routes[pref] = result

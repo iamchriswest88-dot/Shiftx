@@ -30,6 +30,14 @@ enum class TerrainPreference(val steepnessDifficulty: Int) {
     HILLY(3)
 }
 
+/** Compass wish for where the loop should head; absent = anywhere. */
+enum class RideDirection(val bearingDeg: Double, val arrow: String) {
+    NORTH(0.0, "↑"),
+    EAST(90.0, "→"),
+    SOUTH(180.0, "↓"),
+    WEST(270.0, "←")
+}
+
 data class SpurDetectionResult(
     val hasSpur: Boolean,
     val maxSpurLengthMeters: Double,
@@ -606,7 +614,8 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
         targetDistanceMeters: Double,
         terrain: TerrainPreference,
         heatmap: RideHeatmap?,
-        useHeatmap: Boolean
+        useHeatmap: Boolean,
+        direction: RideDirection? = null
     ): Scored? {
         val decoded = PolylineUtils.decodePolyline(routeResult.encodedPolyline)
         if (decoded.size < 4) return null
@@ -653,6 +662,30 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
             TerrainPreference.ROLLING -> 0.0
             TerrainPreference.HILLY -> max(0.0, (12.0 - climbPerKm) / 20.0)
         }
+        // Round trips cannot be aimed (ORS exposes no heading), so the compass
+        // wish is enforced here: the bearing from start to the loop's centroid
+        // versus the chosen direction. Weight 1.5 — decisive against random
+        // seeds, still under retracing's 4.0, so a spurred loop pointing the
+        // right way never beats a clean one slightly off-axis.
+        val directionPenalty = if (direction != null && pts.size > 2) {
+            var cLat = 0.0
+            var cLng = 0.0
+            for (p in pts) { cLat += p.first; cLng += p.second }
+            cLat /= pts.size
+            cLng /= pts.size
+            val mLat = 110_540.0
+            val mLng = 111_320.0 * cos(Math.toRadians(pts.first().first))
+            val dy = (cLat - pts.first().first) * mLat
+            val dx = (cLng - pts.first().second) * mLng
+            if (sqrt(dx * dx + dy * dy) < 200.0) 0.0 // centroid too close: bearing is noise
+            else {
+                val centroidBearing = (Math.toDegrees(atan2(dx, dy)) + 360.0) % 360.0
+                var diff = abs(centroidBearing - direction.bearingDeg) % 360.0
+                if (diff > 180.0) diff = 360.0 - diff
+                1.5 * (diff / 180.0)
+            }
+        } else 0.0
+
         val familiarity = if (useHeatmap) heatmap!!.familiarity(pts) else null
         // A spur on familiar roads is still a spur: the familiarity bonus
         // fades to nothing as retracing rises, so it can never subsidise
@@ -666,6 +699,7 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
             2.0 * min(1.0, unpavedFrac * 10.0) +
             distFit +
             terrainPenalty +
+            directionPenalty +
             0.3 * (1.0 - min(1.0, round / 0.55)) +
             (if (famBonus != null) 1.2 * (1.0 - famBonus) else 0.0)
 
@@ -704,6 +738,7 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
         terrain: TerrainPreference = TerrainPreference.ROLLING,
         heatmap: RideHeatmap? = null,
         quick: Boolean = false,
+        direction: RideDirection? = null,
         onStatusUpdate: (String) -> Unit = {}
     ): LoopRouteResult? = withContext(Dispatchers.Default) {
         val useHeatmap = heatmap != null && !heatmap.isEmpty &&
@@ -751,7 +786,8 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
                 val rotation = Random.nextDouble(0.0, 360.0)
                 val waypoints = heatmap!!.waypointsNear(
                     startLat, startLng, targetDistanceMeters * f,
-                    sectors = 4, rotationDeg = rotation
+                    sectors = 4, rotationDeg = rotation,
+                    directionDeg = direction?.bearingDeg
                 )
                 if (waypoints.size < 3) continue
                 // Cell centers sit up to ~17m off the ridden road; snapping
@@ -764,7 +800,7 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
                     add(Pair(startLat, startLng))
                 }
                 val routeResult = routeGuidedLoop(apiKey, stops, terrain.steepnessDifficulty) ?: continue
-                consider(scoreCandidate(routeResult, targetDistanceMeters, terrain, heatmap, useHeatmap))
+                consider(scoreCandidate(routeResult, targetDistanceMeters, terrain, heatmap, useHeatmap, direction))
                 // A spotless guided loop is the whole point — stop here.
                 if (leaderIsSpotless()) break
             }
@@ -783,7 +819,7 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
                     apiKey, startLng, startLat,
                     targetDistanceMeters * factor, seed, terrain.steepnessDifficulty
                 ) ?: continue
-                consider(scoreCandidate(routeResult, targetDistanceMeters, terrain, heatmap, useHeatmap))
+                consider(scoreCandidate(routeResult, targetDistanceMeters, terrain, heatmap, useHeatmap, direction))
                 if (attemptIdx >= 2 && leaderIsSpotless()) break
             }
         }

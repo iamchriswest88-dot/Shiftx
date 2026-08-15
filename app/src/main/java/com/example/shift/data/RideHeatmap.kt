@@ -143,13 +143,20 @@ class RideHeatmap private constructor(
         startLng: Double,
         targetLoopMeters: Double,
         sectors: Int = 4,
-        rotationDeg: Double = 0.0
+        rotationDeg: Double = 0.0,
+        directionDeg: Double? = null
     ): List<Pair<Double, Double>> {
         if (cells.isEmpty() || sectors < 2) return emptyList()
         // Circumference ≈ loop length / 1.3 (roads meander), radius from that.
         val radius = targetLoopMeters / (2.0 * Math.PI * 1.3)
-        val sx = startLng * mPerDegLng
-        val sy = startLat * mPerDegLat
+        val startX = startLng * mPerDegLng
+        val startY = startLat * mPerDegLat
+        // With a compass wish, the ring's centre moves one radius that way, so
+        // the start sits on the ring's edge and the whole loop bulges in the
+        // chosen direction — the same geometry GraphHopper's heading parameter
+        // produces for its round trips.
+        val sx = startX + (directionDeg?.let { radius * kotlin.math.sin(Math.toRadians(it)) } ?: 0.0)
+        val sy = startY + (directionDeg?.let { radius * kotlin.math.cos(Math.toRadians(it)) } ?: 0.0)
 
         // Per sector: (radius error, absolute bearing, waypoint). The band is
         // deliberately tighter than it once was (0.65–1.45r): a 3.2x spread let
@@ -165,6 +172,13 @@ class RideHeatmap private constructor(
             val dy = y - sy
             val dist = sqrt(dx * dx + dy * dy)
             if (dist < radius * 0.65 || dist > radius * 1.45) continue
+            // A directed ring passes through the start itself — cells beside
+            // the front door are on-ring but useless as waypoints.
+            if (directionDeg != null) {
+                val ddx = x - startX
+                val ddy = y - startY
+                if (sqrt(ddx * ddx + ddy * ddy) < radius * 0.35) continue
+            }
 
             val absBearing = (Math.toDegrees(atan2(dx, dy)) + 720.0) % 360.0
             val bearing = (absBearing + 360.0 - rotationDeg) % 360.0
