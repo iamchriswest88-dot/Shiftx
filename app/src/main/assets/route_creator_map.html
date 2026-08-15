@@ -132,9 +132,22 @@
 
                 var bounds = polyline.getBounds();
                 if (startMarker) bounds.extend(startMarker.getLatLng());
-                map.fitBounds(bounds, {padding: [40, 40]});
+                lastBounds = bounds;
+                map.fitBounds(bounds, {paddingTopLeft: [40, 40], paddingBottomRight: [40, 40 + lastPad]});
             } catch(e) {
                 console.error('displayRoute error:', e);
+            }
+        }
+
+        var lastBounds = null;
+        var lastPad = 0;
+        // bottomPad: CSS pixels of map hidden behind the drawer. Keeps the whole
+        // route in the visible strip as the sheet moves or the route changes.
+        function refit(bottomPad) {
+            map.invalidateSize();
+            lastPad = (typeof bottomPad === 'number' && isFinite(bottomPad) && bottomPad > 0) ? bottomPad : 0;
+            if (lastBounds) {
+                map.fitBounds(lastBounds, {paddingTopLeft: [40, 40], paddingBottomRight: [40, 40 + lastPad]});
             }
         }
 

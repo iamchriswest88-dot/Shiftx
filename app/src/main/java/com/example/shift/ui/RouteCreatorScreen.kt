@@ -1,5 +1,11 @@
 package com.example.shift.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,7 +20,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -111,7 +120,15 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                         FilterChip(
                             selected = direction == null,
                             onClick = { viewModel.setDirection(null) },
-                            label = { Text("Any", fontWeight = if (direction == null) FontWeight.Bold else FontWeight.Normal) },
+                            modifier = Modifier.weight(1f),
+                            label = {
+                                Text(
+                                    "Any",
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = if (direction == null) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = ShiftOrange,
                                 selectedLabelColor = Color.White
@@ -122,7 +139,15 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                             FilterChip(
                                 selected = selected,
                                 onClick = { viewModel.setDirection(dir) },
-                                label = { Text(dir.arrow, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
+                                modifier = Modifier.weight(1f),
+                                label = {
+                                    Text(
+                                        dir.arrow,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textAlign = TextAlign.Center,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = ShiftOrange,
                                     selectedLabelColor = Color.White
@@ -183,8 +208,12 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                                         FilterChip(
                                             selected = selected,
                                             onClick = { viewModel.selectTerrain(pref) },
+                                            modifier = Modifier.weight(1f),
                                             label = {
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Column(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
                                                     Text(
                                                         name,
                                                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
@@ -360,7 +389,25 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
             }
         }
     ) { _ ->
-        Box(modifier = Modifier.fillMaxSize()) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            // Keep the whole route in the strip above the drawer: as the sheet
+            // moves (or a different ride is selected), re-fit with bottom
+            // padding equal to the sheet overlap — same trick as the activity
+            // map. Leaflet padding is CSS pixels, not device pixels.
+            val density = LocalDensity.current.density
+            val containerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
+            val sheetTopPx = runCatching { scaffoldState.bottomSheetState.requireOffset() }
+                .getOrDefault(containerHeightPx)
+            val sheetOverlapCssPx =
+                ((containerHeightPx - sheetTopPx).coerceAtLeast(0f) / density).toInt()
+            LaunchedEffect(sheetOverlapCssPx, generatedRoute) {
+                kotlinx.coroutines.delay(120)
+                webViewRef?.evaluateJavascript(
+                    "if (typeof refit === 'function') refit($sheetOverlapCssPx);",
+                    null
+                )
+            }
+
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
@@ -406,8 +453,13 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                 }
             )
 
+            if (isGenerating) {
+                MakingLoopsOverlay(status = statusMessage)
+            }
+
             // Status / error banner over the map, same voice as the activity map.
-            if (statusMessage.isNotEmpty() || errorMessage != null) {
+            // Hidden while generating — the overlay carries the status then.
+            if (!isGenerating && (statusMessage.isNotEmpty() || errorMessage != null)) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -423,6 +475,68 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Full-screen scrim while the tournament runs: a start and finish dot with a
+ * route of dots filling in between, over and over — loops being made.
+ */
+@Composable
+private fun MakingLoopsOverlay(status: String) {
+    val transition = rememberInfiniteTransition(label = "makingLoops")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 1600, easing = LinearEasing)),
+        label = "dots"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xB3131211)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Canvas(modifier = Modifier.width(220.dp).height(90.dp)) {
+                val startPt = Offset(12.dp.toPx(), size.height * 0.8f)
+                val endPt = Offset(size.width - 12.dp.toPx(), size.height * 0.8f)
+                val ctrl = Offset(size.width / 2f, -size.height * 0.3f)
+
+                fun pointAt(t: Float): Offset {
+                    val u = 1f - t
+                    return Offset(
+                        u * u * startPt.x + 2f * u * t * ctrl.x + t * t * endPt.x,
+                        u * u * startPt.y + 2f * u * t * ctrl.y + t * t * endPt.y
+                    )
+                }
+
+                drawCircle(Color(0xFF2E7D32), 6.dp.toPx(), startPt)
+                drawCircle(ShiftOrange, 6.dp.toPx(), endPt)
+
+                val dots = 13
+                val visible = (progress * (dots + 1)).toInt()
+                for (i in 1..dots) {
+                    if (i <= visible) {
+                        drawCircle(RouteLineColor, 3.dp.toPx(), pointAt(i / (dots + 1f)))
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                "MAKING LOOPS",
+                style = MicroLabelStyle.copy(letterSpacing = 3.sp, color = Color(0xFFF2F2ED))
+            )
+            if (status.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    status,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFA8A29A)
+                )
             }
         }
     }
