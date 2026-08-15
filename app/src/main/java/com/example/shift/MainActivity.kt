@@ -358,11 +358,9 @@ fun FloatingBottomNav(
     Box(
         modifier = modifier
             .shadow(
-                elevation = 18.dp,
+                elevation = 16.dp,
                 shape = RoundedCornerShape(999.dp),
-                // Route-blue glow under the pill, tying it to the map language.
-                ambientColor = com.example.shift.theme.RouteLineColor.copy(alpha = 0.85f),
-                spotColor = com.example.shift.theme.RouteLineColor.copy(alpha = 0.85f)
+                spotColor = Color.Black.copy(alpha = 0.16f)
             )
             .clip(RoundedCornerShape(999.dp))
             .background(Color.White.copy(alpha = 0.88f))
