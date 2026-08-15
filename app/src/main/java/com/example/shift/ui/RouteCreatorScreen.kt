@@ -39,6 +39,7 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
     val startLng by viewModel.startLng.collectAsState()
     val targetDistanceMiles by viewModel.targetDistanceMiles.collectAsState()
     val terrain by viewModel.terrain.collectAsState()
+    val terrainRoutes by viewModel.terrainRoutes.collectAsState()
     val generatedRoute by viewModel.generatedRoute.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
@@ -182,31 +183,6 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
-                    // Terrain preference — steers ORS's steepness band and the
-                    // candidate scoring toward flatter or hillier loops.
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        com.example.shift.data.TerrainPreference.entries.forEach { pref ->
-                            val selected = terrain == pref
-                            val label = when (pref) {
-                                com.example.shift.data.TerrainPreference.FLAT -> "Flat"
-                                com.example.shift.data.TerrainPreference.ROLLING -> "Rolling"
-                                com.example.shift.data.TerrainPreference.HILLY -> "Hilly"
-                            }
-                            FilterChip(
-                                selected = selected,
-                                onClick = { viewModel.setTerrain(pref) },
-                                label = { Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = Color(0xFFFFC700),
-                                    selectedLabelColor = Color(0xFF0F1417)
-                                )
-                            )
-                        }
-                    }
-
                     Text(
                         "Target Distance: ${targetDistanceMiles.toInt()} mi",
                         style = MaterialTheme.typography.titleMedium,
@@ -243,6 +219,49 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
 
                     if (generatedRoute != null) {
                         val route = generatedRoute!!
+
+                        // One ride per terrain came back — pick the flavour.
+                        terrainRoutes?.let { trio ->
+                            if (trio.size > 1) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    trio.forEach { (pref, r) ->
+                                        val selected = terrain == pref
+                                        val name = when (pref) {
+                                            com.example.shift.data.TerrainPreference.FLAT -> "Flat"
+                                            com.example.shift.data.TerrainPreference.ROLLING -> "Rolling"
+                                            com.example.shift.data.TerrainPreference.HILLY -> "Hilly"
+                                        }
+                                        FilterChip(
+                                            selected = selected,
+                                            onClick = { viewModel.selectTerrain(pref) },
+                                            label = {
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Text(
+                                                        name,
+                                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                    Text(
+                                                        "%.0fmi ↗%,.0fft".format(
+                                                            r.distanceMeters * 0.000621371,
+                                                            r.ascentMeters * 3.28084
+                                                        ),
+                                                        style = MaterialTheme.typography.labelSmall
+                                                    )
+                                                }
+                                            },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = Color(0xFFFFC700),
+                                                selectedLabelColor = Color(0xFF0F1417)
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -322,7 +341,7 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                             shape = RoundedCornerShape(24.dp)
                         ) {
                             Text(
-                                text = if (isGenerating) "Generating..." else "Generate Loop Route",
+                                text = if (isGenerating) "Generating..." else "Generate Routes",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                             )
                         }

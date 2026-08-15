@@ -46,6 +46,11 @@ class RouteCreatorViewModel(
     private val _terrain = MutableStateFlow(com.example.shift.data.TerrainPreference.ROLLING)
     val terrain: StateFlow<com.example.shift.data.TerrainPreference> = _terrain
 
+    // One generation now produces a route per terrain; the rider picks after.
+    private val _terrainRoutes =
+        MutableStateFlow<Map<com.example.shift.data.TerrainPreference, LoopRouteResult>?>(null)
+    val terrainRoutes: StateFlow<Map<com.example.shift.data.TerrainPreference, LoopRouteResult>?> = _terrainRoutes
+
     private val _generatedRoute = MutableStateFlow<LoopRouteResult?>(null)
     val generatedRoute: StateFlow<LoopRouteResult?> = _generatedRoute
 
@@ -62,6 +67,7 @@ class RouteCreatorViewModel(
         _startLat.value = lat
         _startLng.value = lng
         _generatedRoute.value = null
+        _terrainRoutes.value = null
         _errorMessage.value = null
     }
 
@@ -73,12 +79,12 @@ class RouteCreatorViewModel(
     // longer matches must not publish its result — it answers a stale question.
     private var generationToken = 0
 
-    fun setTerrain(pref: com.example.shift.data.TerrainPreference) {
+    /** Post-generation selection: swap the displayed route between the trio. */
+    fun selectTerrain(pref: com.example.shift.data.TerrainPreference) {
+        val routes = _terrainRoutes.value ?: return
+        val route = routes[pref] ?: return
         _terrain.value = pref
-        // A different terrain wish means the current loop no longer answers it,
-        // including one still being generated.
-        generationToken++
-        _generatedRoute.value = null
+        _generatedRoute.value = route
     }
 
     fun generateRoute() {
@@ -89,8 +95,9 @@ class RouteCreatorViewModel(
         viewModelScope.launch {
             _isGenerating.value = true
             _errorMessage.value = null
-            _statusMessage.value = "Generating route..."
+            _statusMessage.value = "Generating routes..."
             _generatedRoute.value = null
+            _terrainRoutes.value = null
 
             // Settings key wins; otherwise the baked-in owner key — the same
             // two-tier pattern the Gemini key uses.
@@ -106,24 +113,39 @@ class RouteCreatorViewModel(
             val distanceMeters = _targetDistanceMiles.value * 1609.34
 
             try {
-                val result = loopGenerator.generateLoopRoute(
-                    apiKey = apiKey,
-                    startLat = lat,
-                    startLng = lng,
-                    targetDistanceMeters = distanceMeters.toDouble(),
-                    terrain = _terrain.value,
-                    heatmap = heatmap,
-                    onStatusUpdate = { status -> _statusMessage.value = status }
+                // One ride per terrain, sequentially — three parallel
+                // tournaments would brush the API's per-minute limit.
+                val labels = mapOf(
+                    com.example.shift.data.TerrainPreference.FLAT to "Flat",
+                    com.example.shift.data.TerrainPreference.ROLLING to "Rolling",
+                    com.example.shift.data.TerrainPreference.HILLY to "Hilly"
                 )
+                val routes = LinkedHashMap<com.example.shift.data.TerrainPreference, LoopRouteResult>()
+                for (pref in com.example.shift.data.TerrainPreference.entries) {
+                    if (token != generationToken) break
+                    val label = labels[pref] ?: pref.name
+                    val result = loopGenerator.generateLoopRoute(
+                        apiKey = apiKey,
+                        startLat = lat,
+                        startLng = lng,
+                        targetDistanceMeters = distanceMeters.toDouble(),
+                        terrain = pref,
+                        heatmap = heatmap,
+                        quick = true,
+                        onStatusUpdate = { status -> _statusMessage.value = "$label: $status" }
+                    )
+                    if (result != null) routes[pref] = result
+                }
 
                 if (token == generationToken) {
-                    if (result != null) {
-                        _generatedRoute.value = result
-                        if (result.hadSpurWarning) {
-                            _statusMessage.value = "Route has a short unpaved section"
-                        } else {
-                            _statusMessage.value = ""
-                        }
+                    if (routes.isNotEmpty()) {
+                        _terrainRoutes.value = routes
+                        // Preselect the last chosen terrain when it exists,
+                        // else the first that generated.
+                        val pick = routes[_terrain.value] ?: routes.entries.first().value
+                        _terrain.value = routes.entries.first { it.value === pick }.key
+                        _generatedRoute.value = pick
+                        _statusMessage.value = ""
                     } else {
                         _errorMessage.value = "Could not generate a route. Try a different start location."
                         _statusMessage.value = ""

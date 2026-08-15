@@ -692,12 +692,18 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
      * final pick is loose on distance, strict on quality: a clean loop within
      * 25% of target always beats a spurred one bang on distance.
      */
+    /**
+     * [quick] trims the field (2 guided + 4 round-trip candidates instead of
+     * 3 + 8) for callers generating several terrains in one tap, keeping the
+     * whole trio inside the API's per-minute budget.
+     */
     suspend fun generateLoopRoute(
         apiKey: String,
         startLat: Double, startLng: Double,
         targetDistanceMeters: Double,
         terrain: TerrainPreference = TerrainPreference.ROLLING,
         heatmap: RideHeatmap? = null,
+        quick: Boolean = false,
         onStatusUpdate: (String) -> Unit = {}
     ): LoopRouteResult? = withContext(Dispatchers.Default) {
         val useHeatmap = heatmap != null && !heatmap.isEmpty &&
@@ -738,7 +744,7 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
 
         // ── Source 1: guided loops on the rider's own roads, leg-by-leg ──
         if (useHeatmap) {
-            val radiusFactors = listOf(1.0, 0.85, 1.15)
+            val radiusFactors = if (quick) listOf(1.0, 0.85) else listOf(1.0, 0.85, 1.15)
             for (f in radiusFactors) {
                 attempt++
                 onStatusUpdate("Trying loops on your roads ($attempt)...")
@@ -766,7 +772,9 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
 
         // ── Source 2: random round trips, filling the field ──
         if (!leaderIsSpotless()) {
-            val correctionFactors = listOf(1.0, 0.82, 1.0, 0.82, 0.75, 1.0, 0.82, 0.68)
+            val correctionFactors =
+                if (quick) listOf(1.0, 0.82, 0.75, 0.68)
+                else listOf(1.0, 0.82, 1.0, 0.82, 0.75, 1.0, 0.82, 0.68)
             for ((attemptIdx, factor) in correctionFactors.withIndex()) {
                 attempt++
                 onStatusUpdate("Trying loops ($attempt)...")
