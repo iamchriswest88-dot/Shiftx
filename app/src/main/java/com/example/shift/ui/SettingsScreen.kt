@@ -163,11 +163,36 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 maxLines = 4
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Button(
-                onClick = { viewModel.saveEndRideFanfare(endRideFanfare) },
-                modifier = Modifier.align(Alignment.End)
+
+            // Buzzer preview, Karoo only — the buzzer is the actual instrument,
+            // so previewing anywhere else would misrepresent the sound. Plays
+            // what's typed right now, saved or not, so tuning is edit → tap.
+            val isKaroo = remember {
+                android.os.Build.MANUFACTURER.contains("Hammerhead", ignoreCase = true) ||
+                    android.os.Build.MODEL.contains("Karoo", ignoreCase = true)
+            }
+            val karooSystem = remember { io.hammerhead.karooext.KarooSystemService(context.applicationContext) }
+            DisposableEffect(isKaroo) {
+                if (isKaroo) karooSystem.connect { }
+                onDispose { if (isKaroo) karooSystem.disconnect() }
+            }
+
+            Row(
+                modifier = Modifier.align(Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Save fanfare")
+                if (isKaroo) {
+                    OutlinedButton(onClick = {
+                        val pattern = com.example.shift.extension.VictoryFanfare.parse(endRideFanfare)
+                            ?: com.example.shift.extension.VictoryFanfare.forFinish(false)
+                        karooSystem.dispatch(pattern)
+                    }) {
+                        Text("Preview")
+                    }
+                }
+                Button(onClick = { viewModel.saveEndRideFanfare(endRideFanfare) }) {
+                    Text("Save fanfare")
+                }
             }
 
 
