@@ -34,7 +34,7 @@ import android.webkit.WebViewClient
 import com.example.shift.theme.MicroLabelStyle
 import com.example.shift.theme.RouteLineColor
 import com.example.shift.theme.ShiftDarkSurface
-import com.example.shift.theme.ShiftOrange
+import com.example.shift.theme.ShiftAccent
 import com.example.shift.theme.ShiftTextMuted
 
 class RouteCreatorWebAppInterface(private val onLocationSelected: (Double, Double) -> Unit) {
@@ -130,7 +130,7 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = ShiftOrange,
+                                selectedContainerColor = ShiftAccent,
                                 selectedLabelColor = Color.White
                             )
                         )
@@ -149,7 +149,7 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                                     )
                                 },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = ShiftOrange,
+                                    selectedContainerColor = ShiftAccent,
                                     selectedLabelColor = Color.White
                                 )
                             )
@@ -170,10 +170,10 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                         steps = 10,
                         modifier = Modifier.fillMaxWidth(),
                         colors = SliderDefaults.colors(
-                            thumbColor = ShiftOrange,
-                            activeTrackColor = ShiftOrange,
+                            thumbColor = ShiftAccent,
+                            activeTrackColor = ShiftAccent,
                             inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            activeTickColor = ShiftOrange,
+                            activeTickColor = ShiftAccent,
                             inactiveTickColor = MaterialTheme.colorScheme.surfaceContainerHighest
                         ),
                         thumb = {
@@ -181,7 +181,7 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                                 modifier = Modifier
                                     .width(3.dp)
                                     .height(28.dp)
-                                    .background(ShiftOrange)
+                                    .background(ShiftAccent)
                             )
                         }
                     )
@@ -228,7 +228,7 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                                                 }
                                             },
                                             colors = FilterChipDefaults.filterChipColors(
-                                                selectedContainerColor = ShiftOrange,
+                                                selectedContainerColor = ShiftAccent,
                                                 selectedLabelColor = Color.White
                                             )
                                         )
@@ -339,7 +339,7 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                             Button(
                                 onClick = { viewModel.exportGpx(context) },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = ShiftOrange,
+                                    containerColor = ShiftAccent,
                                     contentColor = Color.White
                                 ),
                                 shape = RoundedCornerShape(24.dp),
@@ -366,7 +366,7 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
                             modifier = Modifier.fillMaxWidth().height(48.dp),
                             enabled = !isGenerating,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = ShiftOrange,
+                                containerColor = ShiftAccent,
                                 contentColor = Color.White,
                                 disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -515,7 +515,7 @@ private fun MakingLoopsOverlay(status: String) {
                 }
 
                 drawCircle(Color(0xFF2E7D32), 6.dp.toPx(), startPt)
-                drawCircle(ShiftOrange, 6.dp.toPx(), endPt)
+                drawCircle(ShiftAccent, 6.dp.toPx(), endPt)
 
                 val dots = 13
                 val visible = (progress * (dots + 1)).toInt()

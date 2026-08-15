@@ -18,7 +18,10 @@ val ShiftHairline = Color(0xFFC9C9C0)
 val ShiftDivider = Color(0xFFD9D9D0)
 val ShiftDotBorder = Color(0xFFB9B9B0)
 
-val ShiftOrange = Color(0xFFF0521E) // Accent orange
+// Accent purple — swapped from the original orange (#F0521E) at matched
+// perceived lightness, so contrast against white text and the light ground
+// is unchanged.
+val ShiftAccent = Color(0xFFA855F7)
 
 val FeelGoodColor = Color(0xFF7ED957)
 val FeelMidColor = Color(0xFFFFC64B)
@@ -36,9 +39,9 @@ val ElevProfileStroke = Color(0xFF1A1A18)
 val RouteLineColor = Color(0xFF5CD5FA)
 
 // Backward-compatible material color mappings
-val primary = ShiftOrange
+val primary = ShiftAccent
 val onPrimary = Color(0xFFFFFFFF)
-val primaryContainer = ShiftOrange
+val primaryContainer = ShiftAccent
 val onPrimaryContainer = Color(0xFFFFFFFF)
 val secondaryContainer = ShiftCardInset
 val onSecondaryContainer = ShiftTextPrimary

@@ -757,7 +757,7 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier, accent
         Text(
             text = value,
             style = StatNumeralHero,
-            color = if (accent) com.example.shift.theme.ShiftOrange
+            color = if (accent) com.example.shift.theme.ShiftAccent
                 else com.example.shift.theme.ShiftTextOnDark
         )
         Text(

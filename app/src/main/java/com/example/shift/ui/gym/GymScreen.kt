@@ -72,7 +72,7 @@ fun GymScreen(
                 onClick = onNewWorkout,
                 modifier = Modifier
                     .size(40.dp)
-                    .background(ShiftOrange, CircleShape)
+                    .background(ShiftAccent, CircleShape)
             ) {
                 Icon(
                     Icons.Default.Add,
@@ -220,7 +220,7 @@ fun GymScreen(
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .background(ShiftOrange, CircleShape)
+                                    .background(ShiftAccent, CircleShape)
                                     .clickable { onRunWorkout(workout.id) },
                                 contentAlignment = Alignment.Center
                             ) {

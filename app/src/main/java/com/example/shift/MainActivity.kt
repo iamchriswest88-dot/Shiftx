@@ -45,7 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.runtime.Composable
 import com.example.shift.theme.ShiftBg
-import com.example.shift.theme.ShiftOrange
+import com.example.shift.theme.ShiftAccent
 import com.example.shift.theme.ShiftTextSecondary
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -403,7 +403,7 @@ fun FloatingBottomNav(
                     modifier = Modifier
                         .size(46.dp)
                         .clip(CircleShape)
-                        .background(if (isSelected) ShiftOrange else Color.Transparent)
+                        .background(if (isSelected) ShiftAccent else Color.Transparent)
                         .clickable { onTabSelected(index) },
                     contentAlignment = Alignment.Center
                 ) {

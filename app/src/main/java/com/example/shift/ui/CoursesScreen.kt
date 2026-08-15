@@ -61,7 +61,7 @@ fun CoursesScreen(
                 onClick = onCreateCourse,
                 modifier = Modifier
                     .size(40.dp)
-                    .background(ShiftOrange, CircleShape)
+                    .background(ShiftAccent, CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
@@ -211,7 +211,7 @@ fun CourseItem(
                             Text(
                                 text = prTime,
                                 style = StatNumeralSmall,
-                                color = ShiftOrange
+                                color = ShiftAccent
                             )
                             Text(
                                 text = "PR",

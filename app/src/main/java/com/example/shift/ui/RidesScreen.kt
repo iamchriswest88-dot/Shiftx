@@ -262,7 +262,7 @@ private fun SegmentResultRow(result: MainViewModel.SegmentResult) {
             Text(
                 text = if (result.estimated) "$detail · ESTIMATED" else detail,
                 style = MicroLabelStyle,
-                color = if (result.isPr) ShiftOrange else ShiftTextMuted
+                color = if (result.isPr) ShiftAccent else ShiftTextMuted
             )
         }
 
@@ -281,7 +281,7 @@ private fun SegmentResultRow(result: MainViewModel.SegmentResult) {
         Box(
             modifier = Modifier
                 .then(
-                    if (isWin) Modifier.background(ShiftOrange, RoundedCornerShape(999.dp))
+                    if (isWin) Modifier.background(ShiftAccent, RoundedCornerShape(999.dp))
                     else Modifier.border(1.dp, ShiftDotBorder, RoundedCornerShape(999.dp))
                 )
                 .padding(horizontal = 10.dp, vertical = 5.dp)
@@ -366,7 +366,7 @@ fun MonthlySummaryCard(
                     Text(
                         text = movingDurationStr,
                         style = StatNumeralHero,
-                        color = ShiftOrange
+                        color = ShiftAccent
                     )
                     Text(
                         text = "MOVING",
@@ -430,11 +430,11 @@ fun ActivityItem(
     // Icon circle: rides = orange circle + white bike icon; others = greige circle + dark icon
     val isRide = !isFlow && !isGym && !isRun
     val (icon, bgCircle, iconTint) = when {
-        isRide -> Triple(Icons.AutoMirrored.Filled.DirectionsBike, ShiftOrange, Color.White)
+        isRide -> Triple(Icons.AutoMirrored.Filled.DirectionsBike, ShiftAccent, Color.White)
         isFlow -> Triple(Icons.Default.Spa, ShiftCardInset, ShiftTextPrimary)
         isGym  -> Triple(Icons.Default.FitnessCenter, ShiftCardInset, ShiftTextPrimary)
         isRun  -> Triple(Icons.Default.DirectionsRun, ShiftCardInset, ShiftTextPrimary)
-        else   -> Triple(Icons.AutoMirrored.Filled.DirectionsBike, ShiftOrange, Color.White)
+        else   -> Triple(Icons.AutoMirrored.Filled.DirectionsBike, ShiftAccent, Color.White)
     }
     
     Card(
@@ -491,7 +491,7 @@ fun ActivityItem(
                     modifier = Modifier
                         .border(
                             width = 1.dp,
-                            color = if (expanded) ShiftOrange else ShiftDotBorder,
+                            color = if (expanded) ShiftAccent else ShiftDotBorder,
                             shape = RoundedCornerShape(999.dp)
                         )
                         .then(
