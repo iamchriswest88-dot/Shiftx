@@ -418,14 +418,96 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
     }
 
 
+    private class Scored(val score: Double, val terrainPenalty: Double, val result: LoopRouteResult)
+
     /**
-     * Candidate tournament. The previous logic returned the FIRST candidate
-     * inside the distance tolerance, spurs or not — and its pruner deliberately
-     * exempts the commonest spur of all, the out-and-back stem at the start,
-     * whose overlap pair spans nearly the whole route. Now every candidate is
-     * scored (retracing weighted heaviest, then surface, distance fit, terrain
-     * match, roundness) and only the best of the field is returned, ending
-     * early once a spotless loop exists to spare the API quota.
+     * Prune, measure and score one ORS route as a tournament candidate.
+     * Shared by both candidate sources — random round trips and
+     * heatmap-guided waypoint loops — so they compete under identical rules.
+     */
+    private fun scoreCandidate(
+        routeResult: RouteResult,
+        targetDistanceMeters: Double,
+        terrain: TerrainPreference,
+        heatmap: RideHeatmap?,
+        useHeatmap: Boolean
+    ): Scored? {
+        val decoded = PolylineUtils.decodePolyline(routeResult.encodedPolyline)
+        if (decoded.size < 4) return null
+
+        // Snip clean mid-route spurs first; scoring judges what pruning
+        // cannot fix (chiefly the start/finish stem).
+        var pts = decoded
+        var distance = routeResult.distanceMeters
+        var duration = routeResult.durationSeconds
+        var ascent = routeResult.ascentMeters
+        if (detectSpurs(decoded).hasSpur) {
+            val pruned = pruneSpurs(decoded)
+            if (pruned.size < decoded.size) {
+                var d = 0.0
+                for (i in 1 until pruned.size) {
+                    d += haversineDistance(
+                        pruned[i - 1].first, pruned[i - 1].second,
+                        pruned[i].first, pruned[i].second
+                    )
+                }
+                if (d > 0.0 && distance > 0.0) {
+                    // Scale climb with the cut too, else a pruned spur's
+                    // ascent inflates climb-per-km for exactly the
+                    // candidates that needed pruning.
+                    duration *= d / distance
+                    ascent *= d / distance
+                }
+                distance = d
+                pts = pruned
+            }
+        }
+
+        val retrace = retraceFraction(pts)
+        val round = roundness(pts)
+        val unpavedFrac =
+            if (routeResult.distanceMeters > 0) routeResult.unpavedDistanceMeters / routeResult.distanceMeters else 0.0
+        val distFit = abs(distance - targetDistanceMeters) / targetDistanceMeters
+        val climbPerKm = if (distance > 0) ascent / (distance / 1000.0) else 0.0
+        val terrainPenalty = when (terrain) {
+            TerrainPreference.FLAT -> max(0.0, (climbPerKm - 6.0) / 20.0)
+            TerrainPreference.ROLLING -> 0.0
+            TerrainPreference.HILLY -> max(0.0, (12.0 - climbPerKm) / 20.0)
+        }
+        val familiarity = if (useHeatmap) heatmap!!.familiarity(pts) else null
+
+        // Retracing dominates: a clean loop 15% off target beats a
+        // spur-ridden one bang on distance. Familiarity pulls toward known
+        // roads without ever outvoting spur-freedom.
+        val score = 4.0 * retrace +
+            2.0 * min(1.0, unpavedFrac * 10.0) +
+            distFit +
+            terrainPenalty +
+            0.3 * (1.0 - min(1.0, round / 0.55)) +
+            (if (familiarity != null) 1.2 * (1.0 - familiarity) else 0.0)
+
+        val candidate = LoopRouteResult(
+            encodedPolyline = PolylineUtils.encodePolyline(pts),
+            coordinates = pts,
+            distanceMeters = distance,
+            durationSeconds = duration,
+            hadSpurWarning = unpavedFrac > 0.02,
+            spurCoordinates = null,
+            ascentMeters = ascent,
+            retraceFraction = retrace,
+            familiarity = familiarity
+        )
+        return Scored(score, terrainPenalty, candidate)
+    }
+
+    /**
+     * Candidate tournament with two sources. Heatmap-GUIDED candidates route
+     * through waypoints picked on the rider's own ridden roads, so familiarity
+     * is built in rather than hoped for; random round trips fill the field and
+     * cover ground the history does not. Every candidate is scored under the
+     * same rules (retracing weighted heaviest, then surface, distance fit,
+     * terrain match, roundness, familiarity) and the best of the whole field
+     * wins. The tournament ends early only once a spotless leader exists.
      */
     suspend fun generateLoopRoute(
         apiKey: String,
@@ -440,106 +522,66 @@ class LoopRouteGenerator(private val orsClient: OpenRouteServiceClient) {
         // candidate equally-uselessly.
         val useHeatmap = heatmap != null && !heatmap.isEmpty &&
             heatmap.hasCoverageNear(startLat, startLng)
-        // ORS treats round-trip length as a suggestion and usually overshoots;
-        // pairing seeds with correction factors keeps the field near target.
-        val correctionFactors = listOf(1.0, 0.82, 1.0, 0.82, 0.75, 1.0, 0.82, 0.68)
         val toleranceMeters = max(500.0, targetDistanceMeters * 0.1)
 
         var best: LoopRouteResult? = null
         var bestScore = Double.MAX_VALUE
         var bestTerrainPenalty = 0.0
+        var attempt = 0
 
+        fun consider(scored: Scored?) {
+            if (scored == null) return
+            if (scored.score < bestScore) {
+                bestScore = scored.score
+                best = scored.result
+                bestTerrainPenalty = scored.terrainPenalty
+            }
+        }
+
+        // ── Source 1: heatmap-guided loops through the rider's own roads ──
+        if (useHeatmap) {
+            val radiusFactors = listOf(1.0, 0.85, 1.15)
+            for (f in radiusFactors) {
+                attempt++
+                onStatusUpdate("Trying loops on your roads ($attempt)...")
+                val rotation = Random.nextDouble(0.0, 360.0)
+                val waypoints = heatmap!!.waypointsNear(
+                    startLat, startLng, targetDistanceMeters * f,
+                    sectors = 4, rotationDeg = rotation
+                )
+                if (waypoints.size < 3) continue
+                val coords = buildList {
+                    add(Pair(startLng, startLat))
+                    waypoints.forEach { add(Pair(it.second, it.first)) }
+                    add(Pair(startLng, startLat))
+                }
+                val routeResult = orsClient.getRoute(apiKey, coords, terrain.steepnessDifficulty) ?: continue
+                consider(scoreCandidate(routeResult, targetDistanceMeters, terrain, heatmap, useHeatmap))
+            }
+        }
+
+        // ── Source 2: random round trips, filling the field ──
+        // ORS treats round-trip length as a suggestion and usually overshoots;
+        // pairing seeds with correction factors keeps the field near target.
+        val correctionFactors = listOf(1.0, 0.82, 1.0, 0.82, 0.75, 1.0, 0.82, 0.68)
         for ((attemptIdx, factor) in correctionFactors.withIndex()) {
-            onStatusUpdate("Trying loops (${attemptIdx + 1}/${correctionFactors.size})...")
+            attempt++
+            onStatusUpdate("Trying loops ($attempt)...")
             val seed = Random.nextInt(100000)
-
             val routeResult = orsClient.getRoundTripRoute(
                 apiKey, startLng, startLat,
                 targetDistanceMeters * factor, seed, terrain.steepnessDifficulty
             ) ?: continue
+            consider(scoreCandidate(routeResult, targetDistanceMeters, terrain, heatmap, useHeatmap))
 
-            val decoded = PolylineUtils.decodePolyline(routeResult.encodedPolyline)
-            if (decoded.size < 4) continue
-
-            // Snip clean mid-route spurs first; scoring judges what pruning
-            // cannot fix (chiefly the start/finish stem).
-            var pts = decoded
-            var distance = routeResult.distanceMeters
-            var duration = routeResult.durationSeconds
-            var ascent = routeResult.ascentMeters
-            if (detectSpurs(decoded).hasSpur) {
-                val pruned = pruneSpurs(decoded)
-                if (pruned.size < decoded.size) {
-                    var d = 0.0
-                    for (i in 1 until pruned.size) {
-                        d += haversineDistance(
-                            pruned[i - 1].first, pruned[i - 1].second,
-                            pruned[i].first, pruned[i].second
-                        )
-                    }
-                    if (d > 0.0 && distance > 0.0) {
-                        // Scale climb with the cut too, else a pruned spur's
-                        // ascent inflates climb-per-km for exactly the
-                        // candidates that needed pruning.
-                        duration *= d / distance
-                        ascent *= d / distance
-                    }
-                    distance = d
-                    pts = pruned
-                }
-            }
-
-            val retrace = retraceFraction(pts)
-            val round = roundness(pts)
-            val unpavedFrac =
-                if (routeResult.distanceMeters > 0) routeResult.unpavedDistanceMeters / routeResult.distanceMeters else 0.0
-            val distFit = abs(distance - targetDistanceMeters) / targetDistanceMeters
-            val climbPerKm = if (distance > 0) ascent / (distance / 1000.0) else 0.0
-            val terrainPenalty = when (terrain) {
-                TerrainPreference.FLAT -> max(0.0, (climbPerKm - 6.0) / 20.0)
-                TerrainPreference.ROLLING -> 0.0
-                TerrainPreference.HILLY -> max(0.0, (12.0 - climbPerKm) / 20.0)
-            }
-
-            val familiarity = if (useHeatmap) heatmap!!.familiarity(pts) else null
-
-            // Retracing dominates: a clean loop 15% off target beats a
-            // spur-ridden one bang on distance. Familiarity pulls toward known
-            // roads without ever outvoting spur-freedom.
-            val score = 4.0 * retrace +
-                2.0 * min(1.0, unpavedFrac * 10.0) +
-                distFit +
-                terrainPenalty +
-                0.3 * (1.0 - min(1.0, round / 0.55)) +
-                (if (familiarity != null) 1.2 * (1.0 - familiarity) else 0.0)
-
-            val candidate = LoopRouteResult(
-                encodedPolyline = PolylineUtils.encodePolyline(pts),
-                coordinates = pts,
-                distanceMeters = distance,
-                durationSeconds = duration,
-                hadSpurWarning = unpavedFrac > 0.02,
-                spurCoordinates = null,
-                ascentMeters = ascent,
-                retraceFraction = retrace,
-                familiarity = familiarity
-            )
-
-            if (score < bestScore) {
-                bestScore = score
-                best = candidate
-                bestTerrainPenalty = terrainPenalty
-            }
-
-            // Field of at least three, then stop as soon as the leader is
-            // spotless: no measurable retracing, on distance, paved.
+            // Field of at least three round trips, then stop as soon as the
+            // leader is spotless: no measurable retracing, on distance, paved,
+            // and true to the terrain wish.
             val leader = best
             if (attemptIdx >= 2 && leader != null &&
                 leader.retraceFraction < 0.02 &&
                 abs(leader.distanceMeters - targetDistanceMeters) <= toleranceMeters &&
                 !leader.hadSpurWarning &&
-                // A spotless flat loop is not spotless when the rider asked for
-                // hills — keep looking unless the terrain wish is also met.
                 bestTerrainPenalty <= 0.15
             ) break
         }

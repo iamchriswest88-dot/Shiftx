@@ -60,4 +60,40 @@ class RideHeatmapTest {
         // ~30km away: nothing.
         assertFalse(hm.hasCoverageNear(53.3, -2.4))
     }
+
+    @Test
+    fun testWaypointsComeFromRiddenRoads() {
+        // History: a square loop of roads around (53.01, -1.99), sides ~2.2km
+        // north-south and ~1.3km east-west in metric terms.
+        val pts = mutableListOf<Pair<Double, Double>>()
+        val lat0 = 53.0
+        val lng0 = -2.0
+        val side = 0.02
+        val n = 60
+        for (i in 0..n) pts.add(Pair(lat0 + side * i / n, lng0))
+        for (i in 0..n) pts.add(Pair(lat0 + side, lng0 + side * i / n))
+        for (i in 0..n) pts.add(Pair(lat0 + side - side * i / n, lng0 + side))
+        for (i in 0..n) pts.add(Pair(lat0, lng0 + side - side * i / n))
+        val hm = RideHeatmap.build(listOf(PolylineUtils.encodePolyline(pts)))
+
+        // Loop sized so the ideal ring radius (~900m) intersects the square's sides.
+        val wps = hm.waypointsNear(53.01, -1.99, targetLoopMeters = 7350.0, sectors = 4, rotationDeg = 0.0)
+        assertTrue("Expected at least 3 waypoints, got ${wps.size}", wps.size >= 3)
+        for (wp in wps) {
+            // Each waypoint must sit ON ridden road (its own cell is ridden):
+            // a 2-point probe through it should be fully familiar.
+            val probe = listOf(wp, Pair(wp.first + 0.0001, wp.second))
+            assertTrue("Waypoint $wp is not on a ridden road", hm.familiarity(probe) > 0.9)
+        }
+    }
+
+    @Test
+    fun testWaypointsEmptyWhenNoHistoryAtRadius() {
+        // History is a tight little loop; asking for a 60km ride puts the ring
+        // ~7km out where nothing has been ridden.
+        val ride = line(53.0, -2.0, 0.00045, 0.0, 40)
+        val hm = RideHeatmap.build(listOf(PolylineUtils.encodePolyline(ride)))
+        val wps = hm.waypointsNear(53.0, -2.0, targetLoopMeters = 60_000.0)
+        assertTrue("No ridden cells near a 7km ring — expected none, got ${wps.size}", wps.isEmpty())
+    }
 }

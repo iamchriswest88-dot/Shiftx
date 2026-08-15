@@ -1,6 +1,8 @@
 package com.example.shift.data
 
 import com.example.shift.utils.PolylineUtils
+import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.max
@@ -122,6 +124,54 @@ class RideHeatmap private constructor(
             prev = cur
         }
         return if (samples == 0) 0.0 else weighted / samples
+    }
+
+    /**
+     * Picks loop waypoints ON ridden roads: for each of [sectors] bearing
+     * sectors around the start (rotated by [rotationDeg]), the ridden cell
+     * whose distance best matches the ideal ring radius for a loop of
+     * [targetLoopMeters]. Routing through these anchors a candidate to
+     * familiar roads instead of hoping a random loop lands on them.
+     *
+     * Returns waypoints in sector (bearing) order — already a sensible loop
+     * order — and only for sectors where history exists, so a rider whose
+     * heat lies entirely north of home gets northern waypoints, not fabricated
+     * southern ones.
+     */
+    fun waypointsNear(
+        startLat: Double,
+        startLng: Double,
+        targetLoopMeters: Double,
+        sectors: Int = 4,
+        rotationDeg: Double = 0.0
+    ): List<Pair<Double, Double>> {
+        if (cells.isEmpty() || sectors < 2) return emptyList()
+        // Circumference ≈ loop length / 1.3 (roads meander), radius from that.
+        val radius = targetLoopMeters / (2.0 * Math.PI * 1.3)
+        val sx = startLng * mPerDegLng
+        val sy = startLat * mPerDegLat
+
+        // Per sector: (radius error, waypoint)
+        val best = arrayOfNulls<Pair<Double, Pair<Double, Double>>>(sectors)
+        for (k in cells.keys) {
+            val cx = (k shr 32).toInt()
+            val cy = k.toInt()
+            val x = (cx + 0.5) * CELL_SIZE_M
+            val y = (cy + 0.5) * CELL_SIZE_M
+            val dx = x - sx
+            val dy = y - sy
+            val dist = sqrt(dx * dx + dy * dy)
+            if (dist < radius * 0.5 || dist > radius * 1.6) continue
+
+            val bearing = (Math.toDegrees(atan2(dx, dy)) + 720.0 - rotationDeg) % 360.0
+            val sector = (bearing / (360.0 / sectors)).toInt().coerceIn(0, sectors - 1)
+            val err = abs(dist - radius)
+            val cur = best[sector]
+            if (cur == null || err < cur.first) {
+                best[sector] = Pair(err, Pair(y / mPerDegLat, x / mPerDegLng))
+            }
+        }
+        return best.filterNotNull().map { it.second }
     }
 
     /** Whether the rider has any history within [radiusM] of a point — decides if familiarity is meaningful here. */
