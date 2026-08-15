@@ -419,8 +419,13 @@ class MainViewModel(
                 api = ApiClient.create(key)
             }
             fetchActivities()
-            if (firebaseUrl.value.isNotEmpty()) {
-                forceCloudSync()
+            // Read the settings flow directly: the firebaseUrl StateFlow is
+            // lazily started and its .value is still "" this early in init.
+            val fbUrl = settingsManager.firebaseUrlFlow.firstOrNull() ?: ""
+            if (fbUrl.isNotEmpty()) {
+                // Pull-merge-push — never a blind push, which used to let a
+                // stale device overwrite the cloud on every app launch.
+                syncNow()
             }
         }
     }
@@ -1233,17 +1238,9 @@ class MainViewModel(
         _apiActivities.value = _apiActivities.value.filter { it.id != activityId }
     }
 
-    fun forceCloudSync() {
+    fun syncNow() {
         viewModelScope.launch {
-            cloudSyncManager.pushToCloud()
-            cloudSyncManager.pushSettingsToCloud()
-        }
-    }
-
-    fun syncFromCloud() {
-        viewModelScope.launch {
-            cloudSyncManager.syncFromCloud()
-            cloudSyncManager.syncSettingsFromCloud()
+            cloudSyncManager.fullSync()
         }
     }
 

@@ -239,22 +239,14 @@ fun SettingsScreen(viewModel: MainViewModel) {
             Text("Cloud Sync", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                FilledTonalButton(
-                    onClick = { viewModel.forceCloudSync() },
-                    modifier = Modifier.weight(1f),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Text("PUSH")
-                }
-                
-                Button(
-                    onClick = { viewModel.syncFromCloud() },
-                    modifier = Modifier.weight(1f),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Text("PULL")
-                }
+            // One two-way sync: pull, merge newest-wins, push back. The old
+            // separate PUSH/PULL buttons let a stale device clobber the cloud.
+            Button(
+                onClick = { viewModel.syncNow() },
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text("SYNC NOW")
             }
 
             Spacer(modifier = Modifier.height(32.dp))

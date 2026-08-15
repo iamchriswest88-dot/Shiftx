@@ -92,8 +92,8 @@ class MainActivity : ComponentActivity() {
             ShiftTheme {
                 val navController = rememberNavController()
                 val mainViewModel: MainViewModel = viewModel(factory = MainViewModelFactory(application, settingsManager, matchCacheManager, courseManager, cloudSyncManager))
-                val courseViewModel: CourseViewModel = viewModel(factory = CourseViewModelFactory(settingsManager, courseManager, matchCacheManager))
-                val coursesListViewModel: CoursesListViewModel = viewModel(factory = CoursesListViewModelFactory(courseManager, matchCacheManager))
+                val courseViewModel: CourseViewModel = viewModel(factory = CourseViewModelFactory(settingsManager, courseManager, matchCacheManager, cloudSyncManager))
+                val coursesListViewModel: CoursesListViewModel = viewModel(factory = CoursesListViewModelFactory(courseManager, matchCacheManager, cloudSyncManager))
                 val routeCreatorViewModel: RouteCreatorViewModel = viewModel(factory = RouteCreatorViewModelFactory(settingsManager))
                 
                 val appDb = (application as com.example.shift.ShiftApplication).database

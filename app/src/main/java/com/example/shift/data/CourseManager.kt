@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -17,7 +18,14 @@ data class Course(
     val startLng: Double,
     val endLat: Double,
     val endLng: Double,
-    val encodedPolyline: String? = null
+    val encodedPolyline: String? = null,
+    // Sync metadata. Edits are merged newest-wins across phone and Karoo, and a
+    // deletion becomes a tombstone (deleted=true) instead of vanishing — a record
+    // that simply disappeared is indistinguishable from one the other device
+    // hasn't heard about yet, which is how deleted segments used to resurrect.
+    // Legacy records default to 0 and lose to any real edit.
+    val lastModified: Long = 0L,
+    val deleted: Boolean = false
 )
 
 class CourseManager(private val context: Context) {
@@ -26,9 +34,20 @@ class CourseManager(private val context: Context) {
         val COURSES_KEY = stringPreferencesKey("saved_courses")
     }
 
+    // Everything UI- and tracking-facing reads this: tombstones stay invisible.
     val coursesFlow: Flow<List<Course>> = context.dataStore.data.map { preferences ->
         val jsonString = preferences[COURSES_KEY] ?: "[]"
         try {
+            Json.decodeFromString<List<Course>>(jsonString).filter { !it.deleted }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    // Sync needs the tombstones too — this is the only reader that should.
+    suspend fun rawCourses(): List<Course> {
+        val jsonString = context.dataStore.data.map { it[COURSES_KEY] ?: "[]" }.first()
+        return try {
             Json.decodeFromString<List<Course>>(jsonString)
         } catch (e: Exception) {
             emptyList()
@@ -36,6 +55,7 @@ class CourseManager(private val context: Context) {
     }
 
     suspend fun saveCourse(course: Course) {
+        val stamped = course.copy(lastModified = System.currentTimeMillis(), deleted = false)
         context.dataStore.edit { preferences ->
             val jsonString = preferences[COURSES_KEY] ?: "[]"
             val currentCourses = try {
@@ -44,16 +64,16 @@ class CourseManager(private val context: Context) {
                 mutableListOf()
             }
             // Overwrite if exists, otherwise add
-            val existingIdx = currentCourses.indexOfFirst { it.id == course.id }
+            val existingIdx = currentCourses.indexOfFirst { it.id == stamped.id }
             if (existingIdx != -1) {
-                currentCourses[existingIdx] = course
+                currentCourses[existingIdx] = stamped
             } else {
-                currentCourses.add(course)
+                currentCourses.add(stamped)
             }
             preferences[COURSES_KEY] = Json.encodeToString(currentCourses)
         }
     }
-    
+
     suspend fun deleteCourse(courseId: String) {
         context.dataStore.edit { preferences ->
             val jsonString = preferences[COURSES_KEY] ?: "[]"
@@ -62,7 +82,15 @@ class CourseManager(private val context: Context) {
             } catch (e: Exception) {
                 mutableListOf()
             }
-            currentCourses.removeAll { it.id == courseId }
+            val idx = currentCourses.indexOfFirst { it.id == courseId }
+            if (idx != -1) {
+                currentCourses[idx] = currentCourses[idx].copy(
+                    deleted = true,
+                    lastModified = System.currentTimeMillis(),
+                    // The geometry is dead weight on a tombstone.
+                    encodedPolyline = null
+                )
+            }
             preferences[COURSES_KEY] = Json.encodeToString(currentCourses)
         }
     }

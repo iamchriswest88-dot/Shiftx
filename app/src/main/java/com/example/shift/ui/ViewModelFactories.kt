@@ -26,12 +26,13 @@ class MainViewModelFactory(
 class CourseViewModelFactory(
     private val settingsManager: SettingsManager,
     private val courseManager: CourseManager,
-    private val matchCacheManager: MatchCacheManager
+    private val matchCacheManager: MatchCacheManager,
+    private val cloudSyncManager: CloudSyncManager
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(CourseViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return CourseViewModel(settingsManager, courseManager, matchCacheManager) as T
+            return CourseViewModel(settingsManager, courseManager, matchCacheManager, cloudSyncManager) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
@@ -39,12 +40,13 @@ class CourseViewModelFactory(
 
 class CoursesListViewModelFactory(
     private val courseManager: CourseManager,
-    private val matchCacheManager: MatchCacheManager
+    private val matchCacheManager: MatchCacheManager,
+    private val cloudSyncManager: CloudSyncManager
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(CoursesListViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return CoursesListViewModel(courseManager, matchCacheManager) as T
+            return CoursesListViewModel(courseManager, matchCacheManager, cloudSyncManager) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

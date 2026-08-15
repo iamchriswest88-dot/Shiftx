@@ -22,19 +22,20 @@ class MatchCacheManager(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun getMatches(courseId: String): List<CourseMatch> = withContext(Dispatchers.IO) {
-        if (!cacheFile.exists()) return@withContext emptyList()
-        try {
-            val content = cacheFile.readText()
-            if (content.isBlank()) return@withContext emptyList()
-            val allMatches = json.decodeFromString<List<CourseMatch>>(content)
-            allMatches.filter { it.courseId == courseId }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
-        }
+        getAllMatchesRaw().filter { it.courseId == courseId && !it.deleted }
     }
 
+    // Display view of the cache: deleted efforts stay invisible.
     suspend fun getAllMatches(): List<CourseMatch> = withContext(Dispatchers.IO) {
+        getAllMatchesRaw().filter { !it.deleted }
+    }
+
+    /**
+     * The cache including tombstones. Every rewrite of the file must start from
+     * this — reading the filtered view and writing it back would silently drop
+     * the tombstones, and with them the deletions the next sync is meant to carry.
+     */
+    suspend fun getAllMatchesRaw(): List<CourseMatch> = withContext(Dispatchers.IO) {
         if (!cacheFile.exists()) return@withContext emptyList()
         try {
             val content = cacheFile.readText()
@@ -47,7 +48,7 @@ class MatchCacheManager(private val context: Context) {
     }
 
     suspend fun saveMatches(matches: List<CourseMatch>) = withContext(Dispatchers.IO) {
-        val existing = getAllMatches().toMutableList()
+        val existing = getAllMatchesRaw().toMutableList()
         for (match in matches) {
             existing.removeAll {
                 it.courseId == match.courseId &&
@@ -84,7 +85,8 @@ class MatchCacheManager(private val context: Context) {
 
         val liveTwin = existing
             .filter {
-                it.activityId.startsWith(LIVE_ID_PREFIX) &&
+                !it.deleted &&
+                    it.activityId.startsWith(LIVE_ID_PREFIX) &&
                     it.courseId == incoming.courseId &&
                     it.date == incoming.date &&
                     kotlin.math.abs(it.timeSeconds - incoming.timeSeconds) <= tolerance
@@ -138,14 +140,22 @@ class MatchCacheManager(private val context: Context) {
     }
 
     suspend fun clearMatchesForCourse(courseId: String) = withContext(Dispatchers.IO) {
-        // Remove matches from cache
+        // Tombstone rather than remove: the course may live on (redefined
+        // geometry) and the cloud still holds the old efforts — plain removal
+        // would just re-import them on the next sync. A rescan writes fresh
+        // entries over these tombstones key-for-key.
         if (cacheFile.exists()) {
             try {
                 val content = cacheFile.readText()
                 if (content.isNotBlank()) {
+                    val now = System.currentTimeMillis()
                     val allMatches = json.decodeFromString<List<CourseMatch>>(content)
-                    val filtered = allMatches.filter { it.courseId != courseId }
-                    cacheFile.writeText(json.encodeToString(filtered))
+                    val updated = allMatches.map {
+                        if (it.courseId == courseId && !it.deleted) {
+                            it.copy(deleted = true, timestamp = now, curve = null)
+                        } else it
+                    }
+                    cacheFile.writeText(json.encodeToString(updated))
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -188,10 +198,14 @@ class MatchCacheManager(private val context: Context) {
                 val content = cacheFile.readText()
                 if (content.isNotBlank()) {
                     val allMatches = json.decodeFromString<List<CourseMatch>>(content)
-                    val filtered = allMatches.filterNot { 
-                        it.courseId == courseId && it.activityId == activityId && it.attemptIndex == attemptIndex 
+                    val updated = allMatches.map {
+                        if (it.courseId == courseId && it.activityId == activityId && it.attemptIndex == attemptIndex) {
+                            // Tombstone with a fresh timestamp so the deletion
+                            // out-votes the other device's copy at merge time.
+                            it.copy(deleted = true, timestamp = System.currentTimeMillis(), curve = null)
+                        } else it
                     }
-                    cacheFile.writeText(json.encodeToString(filtered))
+                    cacheFile.writeText(json.encodeToString(updated))
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -202,9 +216,12 @@ class MatchCacheManager(private val context: Context) {
     suspend fun repairStrayMatches(liveCourses: List<Course>): Int = withContext(Dispatchers.IO) {
         if (liveCourses.isEmpty()) return@withContext 0
         val liveCourseIds = liveCourses.map { it.id }.toSet()
-        val allMatches = getAllMatches().toMutableList()
-        val (liveMatches, strayMatches) = allMatches.partition { liveCourseIds.contains(it.courseId) }
-        
+        val allMatches = getAllMatchesRaw().toMutableList()
+        val (liveMatches, strayAll) = allMatches.partition { liveCourseIds.contains(it.courseId) }
+        // Tombstones never get re-homed — their whole job is to keep their
+        // original key until every device has seen the deletion.
+        val (strayTombstones, strayMatches) = strayAll.partition { it.deleted }
+
         if (strayMatches.isEmpty()) return@withContext 0
 
         val straysByCourse = strayMatches.groupBy { it.courseId }
@@ -222,7 +239,7 @@ class MatchCacheManager(private val context: Context) {
                 val liveList = liveMatchesByCourse[liveCourse.id] ?: emptyList()
                 var overlap = 0
                 for (strayMatch in strayGroup) {
-                    val matchingLive = liveList.firstOrNull { it.activityId == strayMatch.activityId }
+                    val matchingLive = liveList.firstOrNull { !it.deleted && it.activityId == strayMatch.activityId }
                     if (matchingLive != null) {
                         val absDiff = kotlin.math.abs(strayMatch.timeSeconds - matchingLive.timeSeconds)
                         val maxTime = kotlin.math.max(strayMatch.timeSeconds, matchingLive.timeSeconds)
@@ -263,6 +280,7 @@ class MatchCacheManager(private val context: Context) {
                 }
             }
             liveMatchesByCourse.values.forEach { finalMatches.addAll(it) }
+            finalMatches.addAll(strayTombstones)
             saveAllMatches(finalMatches)
             val logMsg = "Re-homed $reHomedCount matches from ${reHomedStrayCourseIds.size} stray course ids"
             android.util.Log.i("MatchCacheManager", logMsg)
@@ -279,15 +297,15 @@ class MatchCacheManager(private val context: Context) {
     }
 
     suspend fun deleteOrphanedMatches(liveCourseIds: Set<String>): Int = withContext(Dispatchers.IO) {
-        val all = getAllMatches()
+        val all = getAllMatchesRaw()
         val (live, orphaned) = all.partition { liveCourseIds.contains(it.courseId) }
         saveAllMatches(live)
-        orphaned.size
+        orphaned.count { !it.deleted }
     }
 
     suspend fun purgeDeletedRoutes(liveCourseIds: Set<String>): Int = withContext(Dispatchers.IO) {
         var purgedCount = 0
-        val allMatches = getAllMatches()
+        val allMatches = getAllMatchesRaw()
         val (live, orphaned) = allMatches.partition { liveCourseIds.contains(it.courseId) }
         if (orphaned.isNotEmpty()) {
             saveAllMatches(live)

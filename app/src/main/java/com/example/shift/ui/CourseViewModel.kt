@@ -48,7 +48,8 @@ data class CourseMatchInfo(
 class CourseViewModel(
     private val settingsManager: SettingsManager,
     private val courseManager: CourseManager,
-    private val matchCacheManager: MatchCacheManager
+    private val matchCacheManager: MatchCacheManager,
+    private val cloudSyncManager: com.example.shift.data.CloudSyncManager
 ) : ViewModel() {
 
     private val _stream = MutableStateFlow<ParsedStream?>(null)
@@ -502,6 +503,8 @@ class CourseViewModel(
                 encodedPolyline = polyline
             )
             courseManager.saveCourse(course)
+            // New/edited segments reach the cloud immediately, not at next launch.
+            cloudSyncManager.fullSync()
         }
     }
 }

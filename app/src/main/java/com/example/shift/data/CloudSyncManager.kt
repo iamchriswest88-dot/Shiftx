@@ -6,6 +6,8 @@ import com.example.shift.api.FirebaseApi
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -19,6 +21,10 @@ class CloudSyncManager(private val context: Context) {
     private val matchManager = MatchCacheManager(context)
 
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+
+    // Serializes concurrent fullSync calls (startup sync racing a save/delete
+    // sync) so two merges can't interleave their read-merge-write cycles.
+    private val syncMutex = Mutex()
 
     private suspend fun getApi(): FirebaseApi? {
         val url = settingsManager.firebaseUrlFlow.first()
@@ -43,100 +49,52 @@ class CloudSyncManager(private val context: Context) {
         return retrofit.create(FirebaseApi::class.java)
     }
 
-    suspend fun syncSettingsFromCloud() {
-        withContext(Dispatchers.IO) {
+    /**
+     * The one sync path: pull both nodes, merge newest-wins with tombstones
+     * (see [SyncMerge]), save the merged truth locally, then push it back so
+     * the cloud is never behind the device that just synced.
+     *
+     * Replaces the old split push/pull, whose blind push-on-launch let a stale
+     * device overwrite the cloud and resurrect deleted segments.
+     *
+     * If the pull fails nothing is pushed — a device that can't see the cloud's
+     * current state has no business overwriting it.
+     */
+    suspend fun fullSync() = withContext(Dispatchers.IO) {
+        syncMutex.withLock {
             try {
-                val api = getApi() ?: return@withContext
-                Log.d("CloudSync", "Pulling settings from Firebase...")
-                val cloudSettings = api.pullSettings()
-                if (cloudSettings != null) {
-                    if (cloudSettings.intervalsApiKey.isNotBlank()) settingsManager.saveApiKey(cloudSettings.intervalsApiKey)
-                    if (cloudSettings.intervalsAthleteId.isNotBlank()) settingsManager.saveAthleteId(cloudSettings.intervalsAthleteId)
-                    if (cloudSettings.orsApiKey.isNotBlank()) settingsManager.saveOrsApiKey(cloudSettings.orsApiKey)
-                    if (cloudSettings.geminiApiKey.isNotBlank()) settingsManager.saveGeminiApiKey(cloudSettings.geminiApiKey)
-                }
-                Log.d("CloudSync", "Settings pull complete.")
-            } catch (e: Exception) {
-                Log.e("CloudSync", "Error pulling settings from cloud", e)
-            }
-        }
-    }
+                val api = getApi() ?: return@withLock
+                Log.d("CloudSync", "Full sync: pulling...")
+                val cloudCourses = api.pullCourses() ?: emptyList()
+                val cloudMatches = api.pullMatches() ?: emptyList()
+                val now = System.currentTimeMillis()
 
-    suspend fun pushSettingsToCloud() {
-        withContext(Dispatchers.IO) {
-            try {
-                val api = getApi() ?: return@withContext
-                Log.d("CloudSync", "Pushing settings to Firebase...")
-                
-                val intervalsApiKey = settingsManager.apiKeyFlow.first() ?: ""
-                val intervalsAthleteId = settingsManager.athleteIdFlow.first() ?: ""
-                val orsApiKey = settingsManager.orsApiKeyFlow.first() ?: ""
-                val geminiApiKey = settingsManager.geminiApiKeyFlow.first() ?: ""
-                
-                val settings = com.example.shift.api.CloudSettings(
-                    intervalsApiKey = intervalsApiKey,
-                    intervalsAthleteId = intervalsAthleteId,
-                    orsApiKey = orsApiKey,
-                    geminiApiKey = geminiApiKey
+                val mergedCourses = SyncMerge.mergeCourses(courseManager.rawCourses(), cloudCourses, now)
+                courseManager.saveAllCourses(mergedCourses)
+
+                val liveCourses = mergedCourses.filter { !it.deleted }
+                val liveCourseIds = liveCourses.map { it.id }.toSet()
+                val mergedMatches = SyncMerge.mergeMatches(
+                    matchManager.getAllMatchesRaw(), cloudMatches, liveCourseIds, now
                 )
-                
-                api.pushSettings(settings)
-                Log.d("CloudSync", "Settings push complete.")
-            } catch (e: Exception) {
-                Log.e("CloudSync", "Error pushing settings to cloud", e)
-            }
-        }
-    }
+                matchManager.saveAllMatches(mergedMatches)
+                matchManager.repairStrayMatches(liveCourses)
 
-    suspend fun syncFromCloud() {
-        withContext(Dispatchers.IO) {
-            try {
-                val api = getApi() ?: return@withContext
-                Log.d("CloudSync", "Pulling data from Firebase...")
-                
-                val cloudCourses = api.pullCourses()
-                if (cloudCourses != null) {
-                    val localCourses = courseManager.coursesFlow.first()
-                    // Simple merge: cloud wins for existing IDs, append new ones
-                    val localMap = localCourses.associateBy { it.id }.toMutableMap()
-                    cloudCourses.forEach { localMap[it.id] = it }
-                    courseManager.saveAllCourses(localMap.values.toList())
+                api.pushCourses(mergedCourses)
+                // Re-read: repairStrayMatches may have re-homed entries.
+                api.pushMatches(matchManager.getAllMatchesRaw())
+
+                // The settings node used to hold API keys in this world-readable
+                // DB. Keys now stay on-device; scrub any that are still there.
+                try {
+                    api.deleteSettings()
+                } catch (e: Exception) {
+                    Log.w("CloudSync", "Could not scrub legacy settings node", e)
                 }
 
-                val cloudMatches = api.pullMatches()
-                if (cloudMatches != null) {
-                    val localMatches = matchManager.getAllMatches()
-                    val localMap = localMatches.associateBy { "${it.courseId}_${it.activityId}_${it.attemptIndex}" }.toMutableMap()
-                    cloudMatches.forEach { localMap["${it.courseId}_${it.activityId}_${it.attemptIndex}"] = it }
-                    matchManager.saveAllMatches(localMap.values.toList())
-                }
-                
-                val updatedCourses = courseManager.coursesFlow.first()
-                matchManager.repairStrayMatches(updatedCourses)
-                
-                Log.d("CloudSync", "Pull complete.")
-
+                Log.d("CloudSync", "Full sync complete: ${liveCourseIds.size} segments, ${mergedMatches.size} matches")
             } catch (e: Exception) {
-                Log.e("CloudSync", "Error pulling from cloud", e)
-            }
-        }
-    }
-
-    suspend fun pushToCloud() {
-        withContext(Dispatchers.IO) {
-            try {
-                val api = getApi() ?: return@withContext
-                Log.d("CloudSync", "Pushing data to Firebase...")
-                
-                val localCourses = courseManager.coursesFlow.first()
-                api.pushCourses(localCourses)
-
-                val localMatches = matchManager.getAllMatches()
-                api.pushMatches(localMatches)
-                
-                Log.d("CloudSync", "Push complete.")
-            } catch (e: Exception) {
-                Log.e("CloudSync", "Error pushing to cloud", e)
+                Log.e("CloudSync", "Full sync failed", e)
             }
         }
     }

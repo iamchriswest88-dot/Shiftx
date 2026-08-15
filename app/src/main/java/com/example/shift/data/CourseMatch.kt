@@ -21,7 +21,11 @@ data class CourseMatch(
     val timestamp: Long = System.currentTimeMillis(),
     val curve: List<CurvePoint>? = null,
     val attemptIndex: Int = 0,
-    val estimatedTime: Boolean = false
+    val estimatedTime: Boolean = false,
+    // Tombstone for cloud sync: a deleted effort keeps its key (courseId,
+    // activityId, attemptIndex) with deleted=true and a fresh timestamp so the
+    // deletion out-votes the other device's live copy in a newest-wins merge.
+    val deleted: Boolean = false
 )
 
 
