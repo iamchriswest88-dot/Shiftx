@@ -38,7 +38,7 @@
     <div id="map"></div>
     <script>
         var map = L.map('map', { zoomControl: false }).setView([53.8, -1.5], 10);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
             maxZoom: 19,
             attribution: '&copy; OSM &copy; CARTO'
         }).addTo(map);
@@ -101,7 +101,7 @@
 
                 var latlngs = coords.map(function(c) { return [c[0], c[1]]; });
                 var polyline = L.polyline(latlngs, {
-                    color: '#ffc700',
+                    color: '#5CD5FA',
                     weight: 4,
                     opacity: 0.9,
                     smoothFactor: 1

@@ -34,7 +34,6 @@ import com.example.shift.theme.*
 fun CoursesScreen(
     viewModel: CoursesListViewModel,
     onCreateCourse: () -> Unit,
-    onOpenRoutePlanner: () -> Unit = {},
     onCourseClick: (String) -> Unit
 ) {
     val courses by viewModel.courses.collectAsState()
@@ -57,35 +56,19 @@ fun CoursesScreen(
                 text = "Segments",
                 style = ScreenTitleStyle
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Route planner — generate a loop route from a start point
-                IconButton(
-                    onClick = onOpenRoutePlanner,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .background(ShiftDarkSurface, CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Map,
-                        contentDescription = "Route Planner",
-                        tint = ShiftTextOnDark,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                // Orange circular add button
-                IconButton(
-                    onClick = onCreateCourse,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .background(ShiftOrange, CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "New Segment",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+            // Orange circular add button — the route planner lives in its own tab now
+            IconButton(
+                onClick = onCreateCourse,
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(ShiftOrange, CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "New Segment",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
 

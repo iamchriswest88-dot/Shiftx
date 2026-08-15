@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.filled.DirectionsBike
@@ -105,16 +106,15 @@ class MainActivity : ComponentActivity() {
 
                 val isKaroo = android.os.Build.MANUFACTURER.contains("Hammerhead", ignoreCase = true) || android.os.Build.MODEL.contains("Karoo", ignoreCase = true)
 
-                val tabs = if (isKaroo) listOf("Segments", "Settings") else listOf("Activity", "Gym", "Hub", "Coach", "Segments", "Settings")
+                // Gym / Hub / Coach are parked for now — riding front and centre.
+                val tabs = if (isKaroo) listOf("Segments", "Settings") else listOf("Activity", "Segments", "Routes", "Settings")
                 val tabIconsSelected = if (isKaroo) listOf(
                     Icons.Default.Map,
                     Icons.Default.Settings
                 ) else listOf(
                     Icons.Default.ShowChart,
-                    Icons.Default.FitnessCenter,
-                    Icons.Default.Hub,
-                    Icons.Default.AutoAwesome,
                     Icons.Default.Map,
+                    Icons.Default.Route,
                     Icons.Default.Settings
                 )
                 val tabIconsUnselected = if (isKaroo) listOf(
@@ -122,17 +122,15 @@ class MainActivity : ComponentActivity() {
                     Icons.Outlined.Settings
                 ) else listOf(
                     Icons.Outlined.ShowChart,
-                    Icons.Outlined.FitnessCenter,
-                    Icons.Outlined.Hub,
-                    Icons.Outlined.AutoAwesome,
                     Icons.Outlined.Map,
+                    Icons.Outlined.Route,
                     Icons.Outlined.Settings
                 )
 
                 NavHost(navController = navController, startDestination = "home") {
                     composable("home") {
                         val pagerState = rememberPagerState(
-                            initialPage = if (isKaroo) 0 else 2,
+                            initialPage = 0,
                             pageCount = { tabs.size }
                         )
                         val coroutineScope = rememberCoroutineScope()
@@ -175,40 +173,23 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         )
-                                        1 -> com.example.shift.ui.gym.GymScreen(
-                                            onNewWorkout = { navController.navigate("builder") },
-                                            onEditWorkout = { workoutId -> navController.navigate("builder?workoutId=$workoutId") },
-                                            onRunWorkout = { id -> navController.navigate("runner/$id") }
-                                        )
-                                        2 -> StatsScreen(
-                                            viewModel = mainViewModel,
-                                            onNavigateToCoach = { prompt ->
-                                                aiCoachViewModel.sendMessage(prompt)
-                                                coroutineScope.launch {
-                                                    pagerState.animateScrollToPage(3)
-                                                }
-                                            },
-                                            onCreateTemplate = { title, durationMin, exercises, isFlow ->
-                                                aiCoachViewModel.createTemplateFromRoutine(title, durationMin, exercises, isFlow)
-                                            },
-                                            onNavigateToGym = {
-                                                coroutineScope.launch {
-                                                    pagerState.animateScrollToPage(1)
-                                                }
-                                            }
-                                        )
-                                        3 -> com.example.shift.ui.AiCoachScreen(
-                                            viewModel = aiCoachViewModel, 
-                                            mainViewModel = mainViewModel,
-                                            onNavigateToBuilder = { workoutId -> navController.navigate("builder?workoutId=$workoutId") }
-                                        )
-                                        4 -> CoursesScreen(
+                                        1 -> CoursesScreen(
                                             viewModel = coursesListViewModel,
                                             onCreateCourse = { navController.navigate("create_course/new") },
-                                            onOpenRoutePlanner = { navController.navigate("route_planner") },
                                             onCourseClick = { courseId -> navController.navigate("course_detail/$courseId") }
                                         )
-                                        5 -> SettingsScreen(viewModel = mainViewModel)
+                                        2 -> {
+                                            // Feed the planner the ride history so generated
+                                            // loops score against the personal heatmap.
+                                            val plannerActivities by mainViewModel.activities.collectAsState()
+                                            LaunchedEffect(plannerActivities) {
+                                                routeCreatorViewModel.setRideHistory(
+                                                    plannerActivities.mapNotNull { it.map?.summary_polyline }
+                                                )
+                                            }
+                                            RouteCreatorScreen(viewModel = routeCreatorViewModel)
+                                        }
+                                        3 -> SettingsScreen(viewModel = mainViewModel)
                                     }
                                 }
                             }
@@ -337,20 +318,6 @@ class MainActivity : ComponentActivity() {
                             onCourseClick = { cId -> navController.navigate("course_detail/$cId") }
                         )
 
-                    }
-                    composable("route_planner") {
-                        // Feed the planner the ride history so generated loops
-                        // can be scored against the personal heatmap.
-                        val plannerActivities by mainViewModel.activities.collectAsState()
-                        LaunchedEffect(plannerActivities) {
-                            routeCreatorViewModel.setRideHistory(
-                                plannerActivities.mapNotNull { it.map?.summary_polyline }
-                            )
-                        }
-                        RouteCreatorScreen(
-                            viewModel = routeCreatorViewModel,
-                            onBack = { navController.popBackStack() }
-                        )
                     }
                     composable("create_course/{activityId}") { backStackEntry ->
                         val activityId = backStackEntry.arguments?.getString("activityId") ?: return@composable
