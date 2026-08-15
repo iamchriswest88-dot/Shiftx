@@ -31,27 +31,42 @@
             color: #fff;
         }
         .leaflet-control-zoom { display: none !important; }
-        /* Frosted strip under the app's bottom drawer. The drawer itself is a
-           translucent Compose sheet; blurring the map from Compose flickers
-           (the WebView repaints on its own schedule), so the blur is done here
-           in the page, where Chromium composites it with the map natively. */
+        /* Frosted strip under the app's bottom drawer. backdrop-filter doesn't
+           render in the Android WebView, so the frost is a second map kept in
+           sync with the real one and blurred with a plain CSS filter — clipped
+           to the strip, oversized by the blur radius to hide edge fringing,
+           and aligned so its scene sits exactly over the real map's. */
         #frost {
             position: fixed;
             left: 0; right: 0; bottom: 0;
             height: 0;
+            overflow: hidden;
             border-radius: 24px 24px 0 0;
-            backdrop-filter: blur(18px) saturate(1.4);
-            -webkit-backdrop-filter: blur(18px) saturate(1.4);
-            background: rgba(255, 255, 255, 0.35);
             pointer-events: none;
             z-index: 2000;
             transition: height 140ms ease-out;
+        }
+        #frostView {
+            position: absolute;
+            left: -24px; bottom: -24px;
+            width: calc(100% + 48px);
+            height: calc(100vh + 48px);
+            filter: blur(16px) saturate(1.35);
+        }
+        #mirror { width: 100%; height: 100%; background: #fff; }
+        #frostTint {
+            position: absolute;
+            left: 0; top: 0; right: 0; bottom: 0;
+            background: rgba(255, 255, 255, 0.35);
         }
     </style>
 </head>
 <body>
     <div id="map"></div>
-    <div id="frost"></div>
+    <div id="frost">
+        <div id="frostView"><div id="mirror"></div></div>
+        <div id="frostTint"></div>
+    </div>
     <script>
         var map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -64,6 +79,21 @@
         // happens whenever the activity drawer is dragged.
         var lastBounds = null;
 
+        // The frost strip's blurred twin: same tiles, same view, no interaction.
+        var mirror = L.map('mirror', {
+            zoomControl: false, attributionControl: false,
+            zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false,
+            inertia: false, keyboard: false, dragging: false, touchZoom: false,
+            scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false
+        });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(mirror);
+        var mirrorRouteLayer = L.layerGroup().addTo(mirror);
+        function syncMirror() {
+            mirror.setView(map.getCenter(), map.getZoom(), { animate: false });
+        }
+        map.on('move zoom moveend zoomend viewreset resize', syncMirror);
+        syncMirror();
+
         // bottomPad: CSS pixels of map hidden behind the app drawer. The route is
         // fitted into the visible strip above it — the map view never resizes,
         // only the framing changes.
@@ -71,6 +101,8 @@
             map.invalidateSize();
             var pad = (typeof bottomPad === 'number' && isFinite(bottomPad) && bottomPad > 0) ? bottomPad : 0;
             document.getElementById('frost').style.height = pad + 'px';
+            mirror.invalidateSize();
+            syncMirror();
             if (lastBounds && lastBounds.isValid()) {
                 map.fitBounds(lastBounds, {
                     paddingTopLeft: [30, 30],
@@ -113,6 +145,15 @@
                 var dataPoints = typeof latlngsJson === 'string' ? JSON.parse(latlngsJson) : latlngsJson;
                 console.log("Parsed " + dataPoints.length + " points");
                 routeLayer.clearLayers();
+                // Keep the frost's twin showing the same ride (one flat colour —
+                // it only ever appears blurred).
+                mirrorRouteLayer.clearLayers();
+                if (dataPoints.length > 0) {
+                    mirrorRouteLayer.addLayer(L.polyline(
+                        dataPoints.map(function(pt) { return [pt[0], pt[1]]; }),
+                        {color: '#C084FC', weight: 5}
+                    ));
+                }
 
                 if (dataPoints.length > 0) {
                     var bounds = L.latLngBounds();

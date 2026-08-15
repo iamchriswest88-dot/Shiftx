@@ -31,6 +31,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import dev.chrisbanes.haze.hazeSource
 import com.example.shift.theme.MicroLabelStyle
 import com.example.shift.theme.RouteLineColor
 import com.example.shift.theme.ShiftDarkSurface
@@ -51,7 +52,14 @@ class RouteCreatorWebAppInterface(private val onLocationSelected: (Double, Doubl
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}) {
+fun RouteCreatorScreen(
+    viewModel: RouteCreatorViewModel,
+    onBack: () -> Unit = {},
+    // The nav pill frosts against this: the sheet is the only thing under the
+    // pill on this tab, and it's pure Compose — safe to sample, unlike the map
+    // WebView behind it.
+    hazeState: dev.chrisbanes.haze.HazeState? = null
+) {
     val startLat by viewModel.startLat.collectAsState()
     val startLng by viewModel.startLng.collectAsState()
     val targetDistanceMiles by viewModel.targetDistanceMiles.collectAsState()
@@ -94,6 +102,9 @@ fun RouteCreatorScreen(viewModel: RouteCreatorViewModel, onBack: () -> Unit = {}
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(
+                        if (hazeState != null) Modifier.hazeSource(hazeState) else Modifier
+                    )
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 8.dp)
                     .navigationBarsPadding()

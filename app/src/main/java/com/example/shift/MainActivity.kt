@@ -142,6 +142,19 @@ class MainActivity : ComponentActivity() {
                         val coroutineScope = rememberCoroutineScope()
                         // Everything scrolling under the pill blurs through it.
                         val hazeState = remember { HazeState() }
+                        // Separate source for the Routes tab: there the pill sits over
+                        // the planner's bottom sheet (pure Compose), so it can frost
+                        // that safely — sampling the tab's WebView is what flickered.
+                        val routesHazeState = remember { HazeState() }
+
+                        // A soft tick as a page settles, whether swiped or picked
+                        // from the pill.
+                        val haptic = LocalHapticFeedback.current
+                        LaunchedEffect(pagerState) {
+                            snapshotFlow { pagerState.settledPage }
+                                .drop(1)
+                                .collect { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+                        }
 
                         Box(
                             modifier = Modifier
@@ -194,7 +207,7 @@ class MainActivity : ComponentActivity() {
                                                     plannerActivities.mapNotNull { it.map?.summary_polyline }
                                                 )
                                             }
-                                            RouteCreatorScreen(viewModel = routeCreatorViewModel)
+                                            RouteCreatorScreen(viewModel = routeCreatorViewModel, hazeState = routesHazeState)
                                         }
                                         3 -> SettingsScreen(viewModel = mainViewModel)
                                     }
@@ -203,10 +216,10 @@ class MainActivity : ComponentActivity() {
 
                             // Floating Blur Pill Navigation Overlay
                             FloatingBottomNav(
-                                // The Routes tab holds a WebView, which backdrop blur
-                                // re-samples on its own timing — flicker. Frost the pill
-                                // over Compose pages only.
-                                hazeState = if (tabs.getOrNull(pagerState.currentPage) == "Routes") null else hazeState,
+                                // On Routes the pill frosts the planner's sheet (its own
+                                // source) instead of the pager — sampling the tab's
+                                // WebView directly is what used to flicker.
+                                hazeState = if (tabs.getOrNull(pagerState.currentPage) == "Routes") routesHazeState else hazeState,
                                 tabs = tabs,
                                 tabIcons = tabIconsSelected,
                                 selectedIndex = pagerState.currentPage,
