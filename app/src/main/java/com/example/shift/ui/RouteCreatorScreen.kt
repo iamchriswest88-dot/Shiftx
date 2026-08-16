@@ -263,8 +263,8 @@ fun RouteCreatorScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 StatCard("MILES", "%.1f".format(route.distanceMeters * 0.000621371), Modifier.weight(1f))
-                                StatCard("EST MIN", "${route.durationSeconds.toInt() / 60}", Modifier.weight(1f), accent = true)
-                                StatCard("ELEV FT", "%,.0f".format(route.ascentMeters * 3.28084), Modifier.weight(1f))
+                                StatCard("EST MIN", "${route.durationSeconds.toInt() / 60}", Modifier.weight(1f), accent = true, alignment = Alignment.CenterHorizontally)
+                                StatCard("ELEV FT", "%,.0f".format(route.ascentMeters * 3.28084), Modifier.weight(1f), alignment = Alignment.End)
                             }
                         }
 

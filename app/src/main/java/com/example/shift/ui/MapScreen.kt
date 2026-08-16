@@ -364,8 +364,8 @@ fun MapScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     StatCard("MILES", "%.1f".format(distMi), Modifier.weight(1f))
-                                    StatCard("MOVING", movingStr, Modifier.weight(1f), accent = true)
-                                    StatCard("ELEV FT", "%,.0f".format(elevAlt), Modifier.weight(1f))
+                                    StatCard("MOVING", movingStr, Modifier.weight(1f), accent = true, alignment = Alignment.CenterHorizontally)
+                                    StatCard("ELEV FT", "%,.0f".format(elevAlt), Modifier.weight(1f), alignment = Alignment.End)
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Row(
@@ -373,8 +373,8 @@ fun MapScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     StatCard("AVG MPH", avgMph?.let { "%.1f".format(it) } ?: "--", Modifier.weight(1f))
-                                    StatCard("AVG W", if (avgWattsVal != null) "$avgWattsVal" else "--", Modifier.weight(1f))
-                                    StatCard("TSS", tss?.let { "%,.0f".format(it) } ?: "--", Modifier.weight(1f))
+                                    StatCard("AVG W", if (avgWattsVal != null) "$avgWattsVal" else "--", Modifier.weight(1f), alignment = Alignment.CenterHorizontally)
+                                    StatCard("TSS", tss?.let { "%,.0f".format(it) } ?: "--", Modifier.weight(1f), alignment = Alignment.End)
                                 }
                             }
                         }
@@ -790,8 +790,16 @@ fun TabToggle(
  * accent stat in orange like the card's MOVING time.
  */
 @Composable
-fun StatCard(label: String, value: String, modifier: Modifier = Modifier, accent: Boolean = false) {
-    Column(modifier = modifier) {
+fun StatCard(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    accent: Boolean = false,
+    // Justified rows: first card Start, middle Center, last End — so the row
+    // spans the full card width instead of three left-aligned thirds.
+    alignment: Alignment.Horizontal = Alignment.Start
+) {
+    Column(modifier = modifier, horizontalAlignment = alignment) {
         Text(
             text = value,
             style = StatNumeralHero,
@@ -833,13 +841,15 @@ fun ElevationGraph(altitude: List<Double>, time: List<Int>?, distance: List<Doub
 
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+            // Justified like the stats card above: first stat to the left edge,
+            // last to the right.
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(horizontalAlignment = Alignment.Start) {
                 Text("${gainFeet.toInt()} ft", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight(200)), color = MaterialTheme.colorScheme.onSurface)
                 Text("Total Climbing", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha=0.6f))
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(horizontalAlignment = Alignment.End) {
                 Text(if (climbingHrs > 0) "${climbingHrs}h ${climbingM}m" else "${climbingM}m", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight(200)), color = MaterialTheme.colorScheme.onSurface)
                 Text("Time Climbing (>3%)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha=0.6f))
             }
