@@ -39,6 +39,10 @@ class MapLayerManager(
     /** Racer arrows currently on the map, so they can be retired individually. */
     private var shownGhostIds: Set<String> = emptySet()
 
+    private val settingsManager = com.example.shift.data.SettingsManager(context)
+    private var ghostArrowsEnabled = true
+    private var segmentLineEnabled = true
+
     fun startMap(emitter: Emitter<MapEffect>) {
         this.mapEmitter = emitter
         emitter.setCancellable {
@@ -47,6 +51,12 @@ class MapLayerManager(
     }
 
     fun start(scope: CoroutineScope) {
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
+            settingsManager.showGhostArrowsFlow.collect { ghostArrowsEnabled = it }
+        }
+        scope.launch(Dispatchers.IO + extensionExceptionHandler) {
+            settingsManager.showSegmentLineFlow.collect { segmentLineEnabled = it }
+        }
         scope.launch(Dispatchers.IO + extensionExceptionHandler) {
             tracker.state.collectLatest { state ->
                 val currentCourseId = state.activeCourseId
@@ -79,6 +89,13 @@ class MapLayerManager(
      * point — the drawer's leaderboard reports them instead.
      */
     private fun updateGhostSymbols(state: TrackingState) {
+        if (!ghostArrowsEnabled) {
+            if (shownGhostIds.isNotEmpty()) {
+                mapEmitter?.onNext(HideSymbols(shownGhostIds.toList()))
+                shownGhostIds = emptySet()
+            }
+            return
+        }
         val racing = state.ghostField.filter { !it.finished }
 
         val icons = racing.map { ghost ->
@@ -111,6 +128,7 @@ class MapLayerManager(
     }
 
     private fun onSegmentEnter(state: TrackingState) {
+        if (!segmentLineEnabled) return
         val polyline = state.activeEncodedPolyline
         if (!polyline.isNullOrBlank()) {
             Log.i(TAG, "Dispatching ShowPolyline for segment '${state.activeCourseId}'")

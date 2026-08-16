@@ -264,6 +264,9 @@ class CourseTracker(
     private var finishBestFix: GateFix? = null
     private var finishBeforeBest: GateFix? = null
 
+    /** Consecutive fixes beyond OFF_COURSE_M; one GPS wobble is not an abandon. */
+    private var offCourseTicks = 0
+
     private fun crossingMs(
         gateLat: Double,
         gateLng: Double,
@@ -317,7 +320,20 @@ class CourseTracker(
                     nearestName = c.name
                 }
                 if (distToStart < START_RADIUS_M) {
+                    // Vet the polyline BEFORE arming: with no usable line every
+                    // fix reads as infinitely off-course and the segment dies the
+                    // moment it starts — seen as "crashes on segment start".
+                    val pts = PolylineUtils.decodePolyline(c.encodedPolyline)
+                    if (pts.size < 2) {
+                        com.example.shift.data.CrashLogger.note(
+                            "Segment '${c.name}' has an unusable polyline (${pts.size} points) — not tracking it"
+                        )
+                        continue
+                    }
                     Log.i(TAG, "Entered segment '${c.name}' (${distToStart.toInt()}m from start)")
+                    com.example.shift.data.CrashLogger.note(
+                        "Entered segment '${c.name}' (${distToStart.toInt()}m from start, ${pts.size} polyline points)"
+                    )
                     activeCourse = c
                     // Provisional — refined to the interpolated line crossing once
                     // the rider passes closest approach to the start gate.
@@ -328,7 +344,8 @@ class CourseTracker(
                     startBeforeBest = prevFix
                     finishArmed = false
                     finishBestDist = Double.MAX_VALUE
-                    decodedPolyline = PolylineUtils.decodePolyline(c.encodedPolyline)
+                    offCourseTicks = 0
+                    decodedPolyline = pts
                     cumPolylineDistances = computeCumulativeDistances(decodedPolyline)
                     totalPolylineDist = cumPolylineDistances.lastOrNull() ?: 0.0
                     currentCurve.clear()
@@ -397,15 +414,24 @@ class CourseTracker(
 
             // 2. Off-course check. Suppressed while the finish is armed: the fixes
             // just past the end gate leave the polyline by construction, and
-            // abandoning there would swallow the result at the line.
+            // abandoning there would swallow the result at the line. Needs three
+            // consecutive fixes out of range — a single GPS wobble used to kill
+            // the segment the moment it started.
             if (minDist > OFF_COURSE_M && !finishArmed) {
+                offCourseTicks++
+                if (offCourseTicks < 3) return
                 Log.w(TAG, "Off course (${minDist.toInt()}m from polyline), abandoning segment")
+                com.example.shift.data.CrashLogger.note(
+                    "Abandoned '${course.name}': ${minDist.toInt()}m off polyline after ${((fix.ms - activeStartTime) / 1000)}s"
+                )
                 activeCourse = null
                 activeGhostSpecs = emptyList()
                 startPending = false
+                offCourseTicks = 0
                 _state.value = TrackingState()
                 return
             }
+            offCourseTicks = 0
 
             // 3. Distance remaining and progress ratio
             val distanceCovered = distanceAlongPolyline(decodedPolyline, closestIndex, lat, lng)
@@ -450,6 +476,9 @@ class CourseTracker(
                 val exactElapsed = (crossMs - activeStartTime) / 1000.0
                 val finishedSeconds = exactElapsed.roundToInt()
                 Log.i(TAG, "Finished segment '${course.name}' in ${finishedSeconds}s (interpolated crossing)")
+                com.example.shift.data.CrashLogger.note(
+                    "Finished '${course.name}' in ${finishedSeconds}s"
+                )
                 val finalDist = maxOf(totalPolylineDist, lastSampleDist)
                 currentCurve.add(CurvePoint(finalDist, exactElapsed))
                 recordAttempt(course, finishedSeconds, currentCurve.toList())

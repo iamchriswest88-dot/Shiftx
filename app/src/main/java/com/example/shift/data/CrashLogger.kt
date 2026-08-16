@@ -54,6 +54,23 @@ object CrashLogger {
         }
     }
 
+    /**
+     * A plain breadcrumb, no exception attached — segment entries, abandons and
+     * the like. They land in the same file, so VIEW CRASH LOG and the cloud
+     * upload tell the whole story of a ride, not just its explosions.
+     */
+    fun note(message: String) {
+        val ctx = appContext ?: return
+        try {
+            val file = File(ctx.filesDir, FILE_NAME)
+            if (file.exists() && file.length() > MAX_BYTES) file.delete()
+            val stamp = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            file.appendText("===== $stamp — $message =====\n")
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to write note", e)
+        }
+    }
+
     fun getEntries(context: Context): List<String> {
         return try {
             val file = File(context.filesDir, FILE_NAME)

@@ -102,6 +102,17 @@ class MainViewModel(
         }
     }
 
+    val showGhostArrows: StateFlow<Boolean> = settingsManager.showGhostArrowsFlow.stateIn(viewModelScope, SharingStarted.Lazily, true)
+    val showSegmentLine: StateFlow<Boolean> = settingsManager.showSegmentLineFlow.stateIn(viewModelScope, SharingStarted.Lazily, true)
+
+    fun setShowGhostArrows(enabled: Boolean) {
+        viewModelScope.launch { settingsManager.saveShowGhostArrows(enabled) }
+    }
+
+    fun setShowSegmentLine(enabled: Boolean) {
+        viewModelScope.launch { settingsManager.saveShowSegmentLine(enabled) }
+    }
+
     fun setAutoOpenSegmentPage(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.saveAutoOpenSegmentPage(enabled)

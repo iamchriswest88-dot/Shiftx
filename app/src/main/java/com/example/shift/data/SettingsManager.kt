@@ -24,6 +24,11 @@ class SettingsManager(private val context: Context) {
         val AUTO_OPEN_SEGMENT_PAGE = booleanPreferencesKey("auto_open_segment_page")
         val END_RIDE_FANFARE = stringPreferencesKey("end_ride_fanfare")
         val END_RIDE_FANFARE_TS = longPreferencesKey("end_ride_fanfare_ts")
+        // Per-feature switches for what the extension sends the Karoo's ride app
+        // at segment start. Diagnostic as much as cosmetic: turning them off one
+        // at a time isolates which dispatch upsets a given firmware.
+        val SHOW_GHOST_ARROWS = booleanPreferencesKey("show_ghost_arrows")
+        val SHOW_SEGMENT_LINE = booleanPreferencesKey("show_segment_line")
     }
 
     val apiKeyFlow: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -98,6 +103,26 @@ class SettingsManager(private val context: Context) {
     suspend fun saveAutoOpenSegmentPage(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTO_OPEN_SEGMENT_PAGE] = enabled
+        }
+    }
+
+    val showGhostArrowsFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[SHOW_GHOST_ARROWS] ?: true
+    }
+
+    suspend fun saveShowGhostArrows(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[SHOW_GHOST_ARROWS] = enabled
+        }
+    }
+
+    val showSegmentLineFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[SHOW_SEGMENT_LINE] ?: true
+    }
+
+    suspend fun saveShowSegmentLine(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[SHOW_SEGMENT_LINE] = enabled
         }
     }
 

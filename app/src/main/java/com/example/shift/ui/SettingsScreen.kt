@@ -141,6 +141,90 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 )
             }
 
+            // Individual switches for what gets drawn on the Karoo's own map at
+            // segment start. Also the diagnostic kit for a ride app that
+            // misbehaves on segment entry: turn them off one at a time.
+            val showSegmentLine by viewModel.showSegmentLine.collectAsState()
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Segment line on map", style = MaterialTheme.typography.bodyLarge)
+                    Text("Draw the purple segment line on the Karoo map", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                }
+                Switch(
+                    checked = showSegmentLine,
+                    onCheckedChange = { viewModel.setShowSegmentLine(it) }
+                )
+            }
+
+            val showGhostArrows by viewModel.showGhostArrows.collectAsState()
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Ghost arrows on map", style = MaterialTheme.typography.bodyLarge)
+                    Text("Draw each racer's arrow on the Karoo map", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                }
+                Switch(
+                    checked = showGhostArrows,
+                    onCheckedChange = { viewModel.setShowGhostArrows(it) }
+                )
+            }
+
+            // The race drawer is an overlay window; without this permission it
+            // silently draws nothing, which reads as "the race never appeared".
+            Spacer(modifier = Modifier.height(12.dp))
+            var overlayGranted by remember {
+                mutableStateOf(android.provider.Settings.canDrawOverlays(context))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Race drawer overlay", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (overlayGranted) "Permission granted — drawer can appear during segments"
+                        else "PERMISSION MISSING — the race drawer cannot appear until this is allowed",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (overlayGranted) Color.Gray else MaterialTheme.colorScheme.error
+                    )
+                }
+                if (!overlayGranted) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Button(onClick = {
+                            try {
+                                context.startActivity(
+                                    Intent(
+                                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        android.net.Uri.parse("package:${context.packageName}")
+                                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "Could not open overlay settings", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }) {
+                            Text("ALLOW")
+                        }
+                        TextButton(onClick = {
+                            overlayGranted = android.provider.Settings.canDrawOverlays(context)
+                        }) { Text("RECHECK") }
+                    }
+                } else {
+                    TextButton(onClick = {
+                        overlayGranted = android.provider.Settings.canDrawOverlays(context)
+                    }) { Text("RECHECK") }
+                }
+            }
+
             Spacer(modifier = Modifier.height(20.dp))
 
             Text("End Ride Fanfare", style = MaterialTheme.typography.bodyLarge)
