@@ -498,13 +498,29 @@ fun MapScreen(
                                     val secs = matchInfo.timeSeconds % 60
                                     val timeFormatted = "%d:%02d".format(mins, secs)
                                     val isPr = matchInfo.rank == 1
-                                    
+
                                     val timeLabel = if (isPr) {
                                         "$timeFormatted · PR"
                                     } else {
                                         timeFormatted
                                     }
-                                    
+
+                                    // Leaderboard placing for this ride's time, out of every
+                                    // effort on the segment — the number PR alone doesn't tell you.
+                                    fun ordinal(n: Int): String {
+                                        val suffix = when {
+                                            n % 100 in 11..13 -> "th"
+                                            n % 10 == 1 -> "st"
+                                            n % 10 == 2 -> "nd"
+                                            n % 10 == 3 -> "rd"
+                                            else -> "th"
+                                        }
+                                        return "$n$suffix"
+                                    }
+                                    val placingLabel = if (matchInfo.total > 1) {
+                                        "${ordinal(matchInfo.rank)} of ${matchInfo.total}"
+                                    } else null
+
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -526,13 +542,23 @@ fun MapScreen(
                                                 modifier = Modifier.size(20.dp)
                                             )
                                             Spacer(modifier = Modifier.width(12.dp))
-                                            Text(
-                                                text = matchInfo.course.name,
-                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
+                                            Column {
+                                                Text(
+                                                    text = matchInfo.course.name,
+                                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                if (placingLabel != null) {
+                                                    Text(
+                                                        text = placingLabel,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = if (isPr) MaterialTheme.colorScheme.primary
+                                                            else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
                                         }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(
