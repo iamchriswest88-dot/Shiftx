@@ -187,7 +187,17 @@ class CourseDetailViewModel(
                         break
                     }
 
-                    val matches = SegmentScanner.detectGates(currentCourse, act, stream)
+                    // A throw here used to kill the whole pass with the activity
+                    // still unmarked — every screen entry restarted the scan into
+                    // the same wall, a scan stuck in a loop. One bad ride now
+                    // costs a log entry and gets marked, not the scanner.
+                    val matches = try {
+                        SegmentScanner.detectGates(currentCourse, act, stream)
+                    } catch (e: Exception) {
+                        com.example.shift.data.ScanLogBuffer.log("detectGates failed for ${act.id}: ${e.message}")
+                        com.example.shift.data.CrashLogger.record(e, "segment scan, activity ${act.id}")
+                        emptyList()
+                    }
                     if (matches.isNotEmpty()) {
                         matchCacheManager.saveMatches(matches)
                         loadCachedMatches()

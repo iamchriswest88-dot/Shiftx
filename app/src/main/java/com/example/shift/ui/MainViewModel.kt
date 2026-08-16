@@ -1014,7 +1014,15 @@ class MainViewModel(
 
                             if (markScanned) {
                                 for (course in unscannedCourses) {
-                                    val matches = SegmentScanner.detectGates(course, activity, stream)
+                                    // Same guard as the detail-screen scanner: one bad
+                                    // ride must not leave itself unmarked and loop.
+                                    val matches = try {
+                                        SegmentScanner.detectGates(course, activity, stream)
+                                    } catch (e: Exception) {
+                                        com.example.shift.data.ScanLogBuffer.log("detectGates failed for ${activity.id} on ${course.name}: ${e.message}")
+                                        com.example.shift.data.CrashLogger.record(e, "auto-scan, activity ${activity.id}")
+                                        emptyList()
+                                    }
                                     if (matches.isNotEmpty()) {
                                         matchCacheManager.saveMatches(matches)
                                     }
