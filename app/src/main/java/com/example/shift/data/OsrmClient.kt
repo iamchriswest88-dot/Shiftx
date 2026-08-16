@@ -13,10 +13,20 @@ object OsrmClient {
     private val client = OkHttpClient()
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun getRoutePolyline(startLng: Double, startLat: Double, endLng: Double, endLat: Double): String? {
+    suspend fun getRoutePolyline(startLng: Double, startLat: Double, endLng: Double, endLat: Double): String? =
+        getRoutePolyline(listOf(startLng to startLat, endLng to endLat))
+
+    /**
+     * Route through every point in order — (lng, lat) pairs, OSRM's own axis
+     * order. Via points pin a segment to the roads the rider means, instead of
+     * whatever shortest path OSRM fancies between the two gates.
+     */
+    suspend fun getRoutePolyline(points: List<Pair<Double, Double>>): String? {
+        if (points.size < 2) return null
         return withContext(Dispatchers.IO) {
             try {
-                val url = "https://router.project-osrm.org/route/v1/bicycle/$startLng,$startLat;$endLng,$endLat?overview=full&geometries=polyline"
+                val coords = points.joinToString(";") { "${it.first},${it.second}" }
+                val url = "https://router.project-osrm.org/route/v1/bicycle/$coords?overview=full&geometries=polyline"
                 val request = Request.Builder().url(url).build()
                 val response = client.newCall(request).execute()
                 

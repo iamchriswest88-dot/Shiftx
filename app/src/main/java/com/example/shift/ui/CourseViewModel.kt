@@ -67,6 +67,57 @@ class CourseViewModel(
     private val _endMarker = MutableStateFlow<LatLng?>(null)
     val endMarker: StateFlow<LatLng?> = _endMarker.asStateFlow()
 
+    /**
+     * Points the segment must pass through, in ride order, between start and
+     * finish. Each map tap beyond the finish extends the segment: the old
+     * finish becomes the newest via point and the tap becomes the finish — so
+     * the rider traces the roads they mean, tap by tap.
+     */
+    private val _viaPoints = MutableStateFlow<List<LatLng>>(emptyList())
+    val viaPoints: StateFlow<List<LatLng>> = _viaPoints.asStateFlow()
+
+    /** Road-snapped preview of the whole gate-to-gate path, for the map. */
+    private val _previewPolyline = MutableStateFlow<String?>(null)
+    val previewPolyline: StateFlow<String?> = _previewPolyline.asStateFlow()
+
+    private var previewJob: kotlinx.coroutines.Job? = null
+
+    private fun refreshPreview() {
+        previewJob?.cancel()
+        val start = _startMarker.value
+        val end = _endMarker.value
+        if (start == null || end == null) {
+            _previewPolyline.value = null
+            return
+        }
+        previewJob = viewModelScope.launch {
+            val pts = buildList {
+                add(start.longitude to start.latitude)
+                _viaPoints.value.forEach { add(it.longitude to it.latitude) }
+                add(end.longitude to end.latitude)
+            }
+            _previewPolyline.value = com.example.shift.data.OsrmClient.getRoutePolyline(pts)
+        }
+    }
+
+    /** Steps back one tap: finish returns to the previous via, then gates clear. */
+    fun undoLastPoint() {
+        when {
+            _endMarker.value != null -> {
+                val vias = _viaPoints.value
+                if (vias.isNotEmpty()) {
+                    _endMarker.value = vias.last()
+                    _viaPoints.value = vias.dropLast(1)
+                } else {
+                    _endMarker.value = null
+                    _courseTime.value = null
+                }
+            }
+            _startMarker.value != null -> _startMarker.value = null
+        }
+        refreshPreview()
+    }
+
     private val _courseTime = MutableStateFlow<Int?>(null)
     val courseTime: StateFlow<Int?> = _courseTime.asStateFlow()
 
@@ -90,6 +141,8 @@ class CourseViewModel(
     fun resetGates() {
         _startMarker.value = null
         _endMarker.value = null
+        _viaPoints.value = emptyList()
+        _previewPolyline.value = null
         _courseTime.value = null
         _courseNameForEdit.value = ""
     }
@@ -97,11 +150,14 @@ class CourseViewModel(
     fun clearStartGate() {
         _startMarker.value = null
         _courseTime.value = null
+        refreshPreview()
     }
 
     fun clearEndGate() {
         _endMarker.value = null
+        _viaPoints.value = emptyList()
         _courseTime.value = null
+        refreshPreview()
     }
 
     fun loadActivityDirectly(activity: Activity) {
@@ -250,11 +306,14 @@ class CourseViewModel(
                 _endMarker.value = snappedPoint
                 calculateTime()
             } else {
-                // Both are set. Tap again to reset.
-                _startMarker.value = snappedPoint
-                _endMarker.value = null
-                _courseTime.value = null
+                // Extend: the old finish becomes a via point and this tap is the
+                // new finish, so the segment follows the tapped roads instead of
+                // whatever path the router would pick between two distant gates.
+                _viaPoints.value = _viaPoints.value + _endMarker.value!!
+                _endMarker.value = snappedPoint
+                calculateTime()
             }
+            refreshPreview()
         }
     }
 
@@ -271,6 +330,7 @@ class CourseViewModel(
             if (_startMarker.value != null && _endMarker.value != null) {
                 calculateTime()
             }
+            refreshPreview()
         }
     }
 
@@ -487,11 +547,13 @@ class CourseViewModel(
             }
             val id = courseId ?: java.util.UUID.randomUUID().toString()
             
-            // Fetch polyline from OSRM
-            val polyline = com.example.shift.data.OsrmClient.getRoutePolyline(
-                start.longitude, start.latitude,
-                end.longitude, end.latitude
-            )
+            // Fetch polyline from OSRM, routed through every via point in order.
+            val routePoints = buildList {
+                add(start.longitude to start.latitude)
+                _viaPoints.value.forEach { add(it.longitude to it.latitude) }
+                add(end.longitude to end.latitude)
+            }
+            val polyline = com.example.shift.data.OsrmClient.getRoutePolyline(routePoints)
             
             val course = com.example.shift.data.Course(
                 id = id,

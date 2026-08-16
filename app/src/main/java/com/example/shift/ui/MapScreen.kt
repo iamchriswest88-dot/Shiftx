@@ -120,6 +120,8 @@ fun MapScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val startMarker by viewModel.startMarker.collectAsState()
     val endMarker by viewModel.endMarker.collectAsState()
+    val viaPoints by viewModel.viaPoints.collectAsState()
+    val previewPolyline by viewModel.previewPolyline.collectAsState()
     val courseTime by viewModel.courseTime.collectAsState()
     val matchedCourses by viewModel.matchedCourses.collectAsState()
 
@@ -195,10 +197,27 @@ fun MapScreen(
                                 StepDot(number = "3", label = "Save", isActive = gateStep == 3, isComplete = false, color = MaterialTheme.colorScheme.primary)
                             }
                             if (startMarker != null || endMarker != null) {
-                                IconButton(onClick = { viewModel.resetGates() }, modifier = Modifier.size(32.dp)) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Reset", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = { viewModel.undoLastPoint() }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                                        Text("UNDO", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                    IconButton(onClick = { viewModel.resetGates() }, modifier = Modifier.size(32.dp)) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "Reset", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                    }
                                 }
                             }
+                        }
+
+                        if (gateStep == 3) {
+                            Text(
+                                if (viaPoints.isEmpty())
+                                    "Keep tapping along the road to guide the segment — each tap moves the finish and pins the route behind it."
+                                else
+                                    "${viaPoints.size} via point${if (viaPoints.size == 1) "" else "s"} — the segment is pinned through every dot.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
                         }
 
                         OutlinedTextField(
@@ -625,6 +644,17 @@ fun MapScreen(
                             val eLat = endMarker?.latitude
                             val eLng = endMarker?.longitude
                             view.evaluateJavascript("if (typeof updateMarkers === 'function') updateMarkers($sLat, $sLng, $eLat, $eLng);", null)
+                            if (isCreationMode) {
+                                val viaJson = viaPoints.joinToString(",", "[", "]") { "[${it.latitude},${it.longitude}]" }
+                                view.evaluateJavascript("if (typeof showViaPoints === 'function') showViaPoints('$viaJson');", null)
+                                val preview = previewPolyline
+                                if (preview != null) {
+                                    val escapedPreview = preview.replace("\\", "\\\\").replace("'", "\\'")
+                                    view.evaluateJavascript("if (typeof drawCourseRoute === 'function') drawCourseRoute('$escapedPreview', true);", null)
+                                } else {
+                                    view.evaluateJavascript("if (typeof drawCourseRoute === 'function') drawCourseRoute(null);", null)
+                                }
+                            }
                             if (latlngs.isNotEmpty()) {
                                 view.evaluateJavascript("if (typeof drawRoute === 'function') drawRoute($jsonArray, false);", null)
                             } else {

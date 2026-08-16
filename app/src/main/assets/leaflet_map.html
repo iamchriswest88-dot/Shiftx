@@ -30,6 +30,21 @@
             background: #E0001B;
             color: #fff;
         }
+        .marker-via {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 9px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #fff;
+            background: #A855F7;
+            border: 2px solid rgba(255,255,255,0.95);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+        }
         .leaflet-control-zoom { display: none !important; }
         /* Frosted strip under the app's bottom drawer. backdrop-filter doesn't
            render in the Android WebView, so the frost is a second map kept in
@@ -222,16 +237,36 @@
             return coordinates;
         }
 
-        function drawCourseRoute(encodedPolyline) {
+        // noFit: skip the camera jump — used by the live segment-creation
+        // preview, where refitting on every tap would fight the rider's panning.
+        function drawCourseRoute(encodedPolyline, noFit) {
             courseLayer.clearLayers();
             if (encodedPolyline) {
                 var latlngs = decodePolyline(encodedPolyline);
                 var pl = L.polyline(latlngs, {color: '#86D17A', weight: 4, dashArray: '5, 10'});
                 courseLayer.addLayer(pl);
-                if (routeLayer.getLayers().length === 0) {
+                if (!noFit && routeLayer.getLayers().length === 0) {
                     map.fitBounds(pl.getBounds(), {padding: [50, 50]});
                 }
             }
+        }
+
+        // Numbered dots for the via points a segment is pinned through.
+        var viaLayer = L.layerGroup().addTo(map);
+        function showViaPoints(coordsJson) {
+            viaLayer.clearLayers();
+            try {
+                var coords = JSON.parse(coordsJson);
+                for (var i = 0; i < coords.length; i++) {
+                    var icon = L.divIcon({
+                        className: '',
+                        html: "<div class='marker-via'>" + (i + 1) + "</div>",
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    });
+                    viaLayer.addLayer(L.marker([coords[i][0], coords[i][1]], {icon: icon, interactive: false}));
+                }
+            } catch(e) {}
         }
 
         // Draw all segments as purple overlays. segmentsJson is an array of {id, polyline, selected}
