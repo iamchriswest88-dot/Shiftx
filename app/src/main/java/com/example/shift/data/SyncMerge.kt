@@ -24,6 +24,23 @@ object SyncMerge {
     /** Two months — generous next to how often the apps actually sync. */
     const val TOMBSTONE_TTL_MS: Long = 60L * 24 * 60 * 60 * 1000
 
+    /**
+     * Same day, give or take one: the Karoo stamps a live effort with its own
+     * local date while the scanned copy carries the ride's start date, and a
+     * post-midnight finish or timezone skew splits those. Requiring exact
+     * equality left the same effort listed twice with two different times.
+     */
+    fun datesClose(a: String, b: String): Boolean {
+        if (a == b) return true
+        return try {
+            val da = java.time.LocalDate.parse(a.take(10))
+            val db = java.time.LocalDate.parse(b.take(10))
+            kotlin.math.abs(da.toEpochDay() - db.toEpochDay()) <= 1
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun mergeCourses(local: List<Course>, cloud: List<Course>, now: Long): List<Course> {
         val byId = LinkedHashMap<String, Course>()
         for (c in cloud) byId[c.id] = c
@@ -91,7 +108,7 @@ object SyncMerge {
                     !it.deleted &&
                         it.activityId.startsWith(MatchCacheManager.LIVE_ID_PREFIX) &&
                         it.courseId == s.courseId &&
-                        it.date == s.date &&
+                        datesClose(it.date, s.date) &&
                         abs(it.timeSeconds - s.timeSeconds) <= tolerance
                 }
                 .minByOrNull { abs(it.timeSeconds - s.timeSeconds) }

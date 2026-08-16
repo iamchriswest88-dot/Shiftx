@@ -151,6 +151,29 @@ class SyncMergeTest {
     }
 
     @Test
+    fun liveTwinCollapsesAcrossMidnight_datesOneDayApart() {
+        // Karoo stamps its local date; the scan carries the ride's start date.
+        // A late finish splits them by one day — still the same effort.
+        val live = match("c", "live-1", timeSeconds = 300, date = "2026-08-15", timestamp = now - day)
+        val scanned = match("c", "act9", timeSeconds = 301, date = "2026-08-16", timestamp = now)
+
+        val merged = SyncMerge.mergeMatches(listOf(live), listOf(scanned), setOf("c"), now)
+
+        assertEquals(1, merged.size)
+        assertEquals("act9", merged[0].activityId)
+    }
+
+    @Test
+    fun datesTwoDaysApartAreDifferentEfforts() {
+        val live = match("c", "live-1", timeSeconds = 300, date = "2026-08-13", timestamp = now)
+        val scanned = match("c", "act9", timeSeconds = 300, date = "2026-08-15", timestamp = now)
+
+        val merged = SyncMerge.mergeMatches(listOf(live), listOf(scanned), setOf("c"), now)
+
+        assertEquals(2, merged.size)
+    }
+
+    @Test
     fun twoGenuineLapsSameDayAreNotCollapsedIntoOneScan() {
         val lap1 = match("c", "live-1", timeSeconds = 300, timestamp = now)
         val lap2 = match("c", "live-2", timeSeconds = 310, timestamp = now)

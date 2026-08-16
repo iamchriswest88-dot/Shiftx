@@ -88,7 +88,7 @@ class MatchCacheManager(private val context: Context) {
                 !it.deleted &&
                     it.activityId.startsWith(LIVE_ID_PREFIX) &&
                     it.courseId == incoming.courseId &&
-                    it.date == incoming.date &&
+                    SyncMerge.datesClose(it.date, incoming.date) &&
                     kotlin.math.abs(it.timeSeconds - incoming.timeSeconds) <= tolerance
             }
             .minByOrNull { kotlin.math.abs(it.timeSeconds - incoming.timeSeconds) }
