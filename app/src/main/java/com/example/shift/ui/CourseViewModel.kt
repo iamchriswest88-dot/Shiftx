@@ -489,6 +489,11 @@ class CourseViewModel(
                 }
                 
                 if (hasMatch) {
+                    // bestTime above is only a coarse trigger: first samples inside a
+                    // 200m zone around each gate. It decides WHETHER this ride touched
+                    // the segment — never what time to display. Displaying it is why
+                    // the activity page and segment page disagreed on every ride: the
+                    // segment page shows the scanner's interpolated gate-to-gate time.
                     val currentActivity = _activity.value
                     if (currentActivity != null) {
                         val parsedStream = com.example.shift.data.ParsedStream(
@@ -510,22 +515,28 @@ class CourseViewModel(
                                 activityName = currentActivity.name,
                                 date = currentActivity.start_date_local.substringBefore("T"),
                                 timeSeconds = bestTime,
-                                timestamp = System.currentTimeMillis()
+                                timestamp = System.currentTimeMillis(),
+                                estimatedTime = true
                             )
                             matchCacheManager.saveMatches(listOf(fallbackMatch))
                             matchCacheManager.markActivityAsScanned(course.id, currentActivity.id)
                         }
                     }
 
+                    // Read the display time back from the cache — the single source
+                    // of truth both pages now share. The save above ran first, so
+                    // this ride's scanned entry is guaranteed to be in here.
                     val cachedMatches = matchCacheManager.getMatches(course.id)
-                    val rank = cachedMatches.count { it.timeSeconds < bestTime } + 1
-                    
                     val currentActivityId = _activity.value?.id?.toString() ?: ""
-                    val isInCache = cachedMatches.any { it.activityId == currentActivityId }
+                    val cachedForThisRide = cachedMatches.filter { it.activityId == currentActivityId }
+                    val displayTime = cachedForThisRide.minOfOrNull { it.timeSeconds } ?: bestTime
+
+                    val rank = cachedMatches.count { it.timeSeconds < displayTime } + 1
+                    val isInCache = cachedForThisRide.isNotEmpty()
                     val total = if (isInCache) cachedMatches.size else cachedMatches.size + 1
 
-                    android.util.Log.d("DEBUG_MATCH", "Found match for ${course.name} with time $bestTime, rank $rank/$total")
-                    matches.add(CourseMatchInfo(course, bestTime, rank, total))
+                    android.util.Log.d("DEBUG_MATCH", "Found match for ${course.name} with time $displayTime (zone estimate was $bestTime), rank $rank/$total")
+                    matches.add(CourseMatchInfo(course, displayTime, rank, total))
                 }
  else {
                     android.util.Log.d("DEBUG_MATCH", "No match for ${course.name}. starts: ${startIndices.size}, ends: ${endIndices.size}")
