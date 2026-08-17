@@ -498,13 +498,17 @@ private fun StatCellView(cell: StatCell, alignment: Alignment.Horizontal, modifi
                     .clip(RoundedCornerShape(2.dp))
                     .background(ShiftTextOnDark.copy(alpha = 0.14f))
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(cell.progress)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(ShiftAccent)
-                )
+                // An untouched target draws no fill at all: fillMaxWidth is documented
+                // for fractions above zero, and a zero-width bar is nothing to draw.
+                if (cell.progress > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(cell.progress)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(ShiftAccent)
+                    )
+                }
             }
         }
     }
