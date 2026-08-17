@@ -1186,6 +1186,32 @@ class MainViewModel(
         emptyList()
     }
 
+    /**
+     * The date each still-standing segment best was set on, one entry per segment.
+     *
+     * This is what the Hub counts as a PR for a period: a best that is both current
+     * and was set inside the window. A time since beaten is no longer a record, so it
+     * stops counting — which means the figure can fall as well as rise. Candidates are
+     * picked the way [segmentResultsFor] picks them, real efforts unless a segment has
+     * nothing but estimates, so an estimate cannot claim a PR over a genuine ride.
+     */
+    suspend fun segmentPrDates(): List<LocalDate> = try {
+        val liveCourseIds = courseManager.coursesFlow.first().map { it.id }.toSet()
+        matchCacheManager.getAllMatches()
+            .filter { liveCourseIds.contains(it.courseId) }
+            .groupBy { it.courseId }
+            .values
+            .mapNotNull { effortsOnCourse ->
+                val real = effortsOnCourse.filter { !it.estimatedTime }
+                val candidates = if (real.isNotEmpty()) real else effortsOnCourse
+                candidates.minByOrNull { it.timeSeconds }
+                    ?.let { best -> com.example.shift.data.HubStats.dateOf(best.date) }
+            }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        emptyList()
+    }
+
     fun reloadSegmentCounts() {
         viewModelScope.launch {
             try {

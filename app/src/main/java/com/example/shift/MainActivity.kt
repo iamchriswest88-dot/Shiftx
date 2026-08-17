@@ -112,12 +112,15 @@ class MainActivity : ComponentActivity() {
 
                 val isKaroo = android.os.Build.MANUFACTURER.contains("Hammerhead", ignoreCase = true) || android.os.Build.MODEL.contains("Karoo", ignoreCase = true)
 
-                // Gym / Hub / Coach are parked for now — riding front and centre.
-                val tabs = if (isKaroo) listOf("Segments", "Settings") else listOf("Activity", "Segments", "Routes", "Settings")
+                // Gym and Coach stay parked. The Hub leads on the phone — form first,
+                // then the ride record — but not on the Karoo, where the head unit is
+                // for riding and two tabs are all the screen takes.
+                val tabs = if (isKaroo) listOf("Segments", "Settings") else listOf("Hub", "Activity", "Segments", "Routes", "Settings")
                 val tabIconsSelected = if (isKaroo) listOf(
                     Icons.Default.Map,
                     Icons.Default.Settings
                 ) else listOf(
+                    Icons.Default.BarChart,
                     Icons.Default.ShowChart,
                     Icons.Default.Map,
                     Icons.Default.Route,
@@ -127,6 +130,7 @@ class MainActivity : ComponentActivity() {
                     Icons.Outlined.Map,
                     Icons.Outlined.Settings
                 ) else listOf(
+                    Icons.Outlined.BarChart,
                     Icons.Outlined.ShowChart,
                     Icons.Outlined.Map,
                     Icons.Outlined.Route,
@@ -178,7 +182,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                 } else {
                                     when (page) {
-                                        0 -> RidesScreen(
+                                        0 -> HubScreen(viewModel = mainViewModel)
+                                        1 -> RidesScreen(
                                             viewModel = mainViewModel,
                                             onActivityClick = { activity ->
                                                 val isWorkout = activity.type == "WeightTraining" || activity.type == "Yoga" || activity.type == "Workout" || activity.id.startsWith("gym_")
@@ -193,12 +198,12 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         )
-                                        1 -> CoursesScreen(
+                                        2 -> CoursesScreen(
                                             viewModel = coursesListViewModel,
                                             onCreateCourse = { navController.navigate("create_course/new") },
                                             onCourseClick = { courseId -> navController.navigate("course_detail/$courseId") }
                                         )
-                                        2 -> {
+                                        3 -> {
                                             // Feed the planner the ride history so generated
                                             // loops score against the personal heatmap.
                                             val plannerActivities by mainViewModel.activities.collectAsState()
@@ -209,7 +214,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                             RouteCreatorScreen(viewModel = routeCreatorViewModel, hazeState = routesHazeState)
                                         }
-                                        3 -> SettingsScreen(viewModel = mainViewModel)
+                                        4 -> SettingsScreen(viewModel = mainViewModel)
                                     }
                                 }
                             }
