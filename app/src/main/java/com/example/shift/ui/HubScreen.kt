@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -341,7 +342,8 @@ private fun VerdictStrip(verdict: HubVerdict) {
                 append(verdict.detail)
             },
             style = MaterialTheme.typography.bodyMedium,
-            color = ShiftTextPrimary
+            color = ShiftTextPrimary,
+            modifier = Modifier.weight(1f)
         )
     }
 }
