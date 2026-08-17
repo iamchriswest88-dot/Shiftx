@@ -507,18 +507,8 @@ fun MapScreen(
 
                                     // Leaderboard placing for this ride's time, out of every
                                     // effort on the segment — the number PR alone doesn't tell you.
-                                    fun ordinal(n: Int): String {
-                                        val suffix = when {
-                                            n % 100 in 11..13 -> "th"
-                                            n % 10 == 1 -> "st"
-                                            n % 10 == 2 -> "nd"
-                                            n % 10 == 3 -> "rd"
-                                            else -> "th"
-                                        }
-                                        return "$n$suffix"
-                                    }
                                     val placingLabel = if (matchInfo.total > 1) {
-                                        "${ordinal(matchInfo.rank)} of ${matchInfo.total}"
+                                        "${matchInfo.rank} / ${matchInfo.total}"
                                     } else null
 
                                     Row(
@@ -551,12 +541,19 @@ fun MapScreen(
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                                 if (placingLabel != null) {
-                                                    Text(
-                                                        text = placingLabel,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = if (isPr) MaterialTheme.colorScheme.primary
-                                                            else MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(50))
+                                                            .background(com.example.shift.theme.ShiftAccent)
+                                                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = placingLabel,
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                            color = Color.White
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
