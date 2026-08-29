@@ -10,6 +10,7 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonNull
 import retrofit2.http.GET
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -66,8 +67,28 @@ data class Activity(
     val icu_atl: Double? = null,
     val icu_eftp: Double? = null,
     val map: ActivityMap? = null,
-    val source: String? = null
-)
+    val source: String? = null,
+    /**
+     * Calendar-only fields. The /events feed returns the same shape as an
+     * activity, plus what kind of calendar entry it is and — once the plan has
+     * been ridden — the activity it was paired with.
+     */
+    val category: String? = null,
+    val paired_activity_id: JsonElement? = null
+) {
+    /**
+     * The paired activity's id, if intervals has matched this planned workout
+     * to a completed one. Ids come back as a bare number on some entries and a
+     * quoted "i123" on others, so it is read out of the raw element.
+     */
+    val pairedActivityId: String?
+        get() {
+            val element = paired_activity_id
+            if (element == null || element is JsonNull) return null
+            val content = (element as? JsonPrimitive)?.content ?: return null
+            return content.takeIf { it.isNotBlank() && it != "null" }
+        }
+}
 
 @Serializable
 data class SportInfo(

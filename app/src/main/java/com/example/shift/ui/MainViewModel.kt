@@ -15,6 +15,7 @@ import com.example.shift.data.IntervalsEventRequest
 import com.example.shift.data.SettingsManager
 import com.example.shift.data.TargetsManager
 import com.example.shift.data.WeeklyTargets
+import com.example.shift.data.PlannedEvents
 import com.example.shift.data.MatchCacheManager
 import com.example.shift.data.SegmentScanner
 import com.example.shift.data.CloudSyncManager
@@ -489,13 +490,12 @@ class MainViewModel(
                             val newest = LocalDate.now().plusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE)
                             val responseActivities = currentApi.getActivities(currentAthleteId, oldest = oldest, newest = newest)
                             val responseEvents = currentApi.getEvents(currentAthleteId, oldest = oldest, newest = newest)
-                            
+
                             val currentIsoDate = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-                            val pastEvents = responseEvents.filter { it.start_date_local < currentIsoDate }
-                            
-                            (responseActivities + pastEvents)
-                                .distinctBy { it.id }
-                                .sortedByDescending { it.start_date_local }
+                            // Calendar entries only join the history when nothing
+                            // else already records that session — otherwise a ridden
+                            // plan lists twice, the second copy with no distance on it.
+                            PlannedEvents.mergeHistory(responseActivities, responseEvents, currentIsoDate)
                         } catch (e: Exception) {
                             e.printStackTrace()
                             emptyList()
