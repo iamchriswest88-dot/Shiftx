@@ -207,23 +207,29 @@ class HubStatsTest {
         assertEquals(FormZone.FRESH, HubStats.zoneFor(30))
     }
 
-    // ── Monthly load ─────────────────────────────────────────────────────────
+    // ── Weekly load ──────────────────────────────────────────────────────────
 
     @Test
-    fun monthlyLoadBucketsByCalendarMonthOfTheYearAsked() {
+    fun weeklyLoadBucketsByMondayWeekEndingWithTheWeekInProgress() {
+        // A Wednesday, so the last bucket is a week still being ridden.
+        val today = LocalDate.of(2026, 2, 18)
         val activities = listOf(
-            activity("2026-02-03", load = 100.0),
-            activity("2026-02-20", load = 50.0),
-            activity("2026-08-01", load = 80.0),
-            activity("2025-02-10", load = 999.0)
+            activity("2026-02-16", load = 100.0), // Monday of this week
+            activity("2026-02-18", load = 50.0),  // today, same week
+            activity("2026-02-15", load = 80.0),  // Sunday, the week before
+            activity("2026-01-05", load = 40.0),  // six weeks back
+            activity("2025-11-01", load = 999.0)  // off the left edge of the chart
         )
 
-        val load = HubStats.monthlyLoad(activities, 2026)
+        val load = HubStats.weeklyLoad(activities, today, weeks = 12)
 
         assertEquals(12, load.size)
-        assertEquals(0.0, load[0], 0.01)
-        assertEquals(150.0, load[1], 0.01)
-        assertEquals(80.0, load[7], 0.01)
+        assertEquals(LocalDate.of(2025, 12, 1), load.first().start)
+        assertEquals(LocalDate.of(2026, 2, 16), load.last().start)
+        assertEquals(150.0, load.last().load, 0.01)
+        assertEquals(80.0, load[10].load, 0.01)
+        assertEquals(40.0, load[5].load, 0.01)
+        assertEquals(0.0, load.first().load, 0.01)
     }
 
     // ── Comparisons and the verdict ──────────────────────────────────────────
