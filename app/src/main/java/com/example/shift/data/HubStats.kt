@@ -3,6 +3,7 @@ package com.example.shift.data
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import kotlin.math.abs
 import kotlin.math.exp
@@ -20,6 +21,9 @@ import kotlin.math.roundToInt
 
 private const val METRES_TO_MILES = 0.000621371
 private const val METRES_TO_FEET = 3.28084
+
+/** How many weeks the Hub's load chart shows — a training block's worth. */
+const val LOAD_CHART_WEEKS = 12
 
 /** How far back the stats section is looking. */
 enum class HubPeriod { WEEK, MONTH, YEAR, ALL }
@@ -41,6 +45,9 @@ data class PeriodTotals(
 
 /** One day of the fitness/fatigue curve. */
 data class FormPoint(val ctl: Double, val atl: Double)
+
+/** Total load for one week, [start] being its Monday. */
+data class WeekLoad(val start: LocalDate, val load: Double)
 
 /**
  * Where today's form sits. The bands are the usual training-stress-balance ones:
@@ -229,14 +236,28 @@ object HubStats {
         else -> FormZone.OVERLOAD
     }
 
-    /** Total load per calendar month of [year], January first, always 12 entries. */
-    fun monthlyLoad(activities: List<Activity>, year: Int): List<Double> {
-        val sums = DoubleArray(12)
+    /**
+     * Total load per week for the [weeks] weeks ending with the one [today] falls in,
+     * oldest first. Weeks run Monday to Sunday, the same as the week period does, so
+     * the last entry is the week in progress.
+     */
+    fun weeklyLoad(
+        activities: List<Activity>,
+        today: LocalDate,
+        weeks: Int = LOAD_CHART_WEEKS
+    ): List<WeekLoad> {
+        val thisWeek = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val firstWeek = thisWeek.minusWeeks((weeks - 1).toLong())
+        val sums = DoubleArray(weeks)
+
         activities.forEach { activity ->
             val date = dateOf(activity.start_date_local) ?: return@forEach
-            if (date.year == year) sums[date.monthValue - 1] += activity.icu_training_load ?: 0.0
+            val week = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+            val index = ChronoUnit.WEEKS.between(firstWeek, week).toInt()
+            if (index in 0 until weeks) sums[index] += activity.icu_training_load ?: 0.0
         }
-        return sums.toList()
+
+        return List(weeks) { WeekLoad(firstWeek.plusWeeks(it.toLong()), sums[it]) }
     }
 
     fun firstRideDate(activities: List<Activity>): LocalDate? =

@@ -36,6 +36,7 @@ import com.example.shift.data.HubPeriod
 import com.example.shift.data.HubStats
 import com.example.shift.data.HubVerdict
 import com.example.shift.data.PeriodTotals
+import com.example.shift.data.WeekLoad
 import com.example.shift.data.WeeklyTargets
 import com.example.shift.theme.*
 import java.time.LocalDate
@@ -83,7 +84,7 @@ fun HubScreen(viewModel: MainViewModel) {
             HubStats.totals(activities, it, personalBestDates)
         }
     }
-    val monthlyLoad = remember(activities) { HubStats.monthlyLoad(activities, today.year) }
+    val weeklyLoad = remember(activities) { HubStats.weeklyLoad(activities, today) }
     val firstRide = remember(activities) { HubStats.firstRideDate(activities) }
 
     val verdict = remember(period, totals, previousTotals, weeklyTargets, form, ramp, firstRide) {
@@ -159,7 +160,7 @@ fun HubScreen(viewModel: MainViewModel) {
         )
 
         Spacer(modifier = Modifier.height(12.dp))
-        MonthlyLoadCard(monthlyLoad = monthlyLoad, year = today.year, currentMonth = today.monthValue)
+        WeeklyLoadCard(weeklyLoad = weeklyLoad)
 
         // Clear of the floating nav pill.
         Spacer(modifier = Modifier.height(110.dp))
@@ -515,12 +516,14 @@ private fun StatCellView(cell: StatCell, alignment: Alignment.Horizontal, modifi
 }
 
 /**
- * Load month by month across the current year. The current month is solid, months
- * still to come are ghosted so the year reads as unfinished rather than as a collapse.
+ * Load week by week over the block just gone, oldest week first. The week in progress
+ * is solid so a part-finished bar reads as unfinished rather than as a collapse, and
+ * weeks with nothing on them are ghosted rather than absent.
  */
 @Composable
-private fun MonthlyLoadCard(monthlyLoad: List<Double>, year: Int, currentMonth: Int) {
-    val peak = monthlyLoad.maxOrNull() ?: 0.0
+private fun WeeklyLoadCard(weeklyLoad: List<WeekLoad>) {
+    val peak = weeklyLoad.maxOfOrNull { it.load } ?: 0.0
+    val currentWeek = weeklyLoad.lastIndex
 
     Column(
         modifier = Modifier
@@ -530,7 +533,11 @@ private fun MonthlyLoadCard(monthlyLoad: List<Double>, year: Int, currentMonth: 
             .border(1.dp, ShiftDivider, RoundedCornerShape(24.dp))
             .padding(horizontal = 20.dp, vertical = 16.dp)
     ) {
-        Text(text = "MONTHLY LOAD · $year", style = MicroLabelStyle, color = ShiftTextMuted)
+        Text(
+            text = "WEEKLY LOAD · ${weeklyLoad.size} WEEKS",
+            style = MicroLabelStyle,
+            color = ShiftTextMuted
+        )
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(
@@ -540,10 +547,9 @@ private fun MonthlyLoadCard(monthlyLoad: List<Double>, year: Int, currentMonth: 
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            monthlyLoad.forEachIndexed { index, load ->
-                val month = index + 1
-                val hasLoad = load > 0.0 && peak > 0.0
-                val fraction = if (hasLoad) (load / peak).toFloat().coerceIn(0.08f, 1f) else 0.12f
+            weeklyLoad.forEachIndexed { index, week ->
+                val hasLoad = week.load > 0.0 && peak > 0.0
+                val fraction = if (hasLoad) (week.load / peak).toFloat().coerceIn(0.08f, 1f) else 0.12f
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -552,7 +558,7 @@ private fun MonthlyLoadCard(monthlyLoad: List<Double>, year: Int, currentMonth: 
                         .background(
                             when {
                                 !hasLoad -> ElevProfileFill
-                                month == currentMonth -> ShiftAccent
+                                index == currentWeek -> ShiftAccent
                                 else -> RouteLineColor
                             }
                         )
@@ -565,10 +571,12 @@ private fun MonthlyLoadCard(monthlyLoad: List<Double>, year: Int, currentMonth: 
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D").forEach { initial ->
+            // The day each week opens on — enough to place a bar in the calendar
+            // without the month names crowding twelve columns.
+            weeklyLoad.forEach { week ->
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     Text(
-                        text = initial,
+                        text = week.start.dayOfMonth.toString(),
                         style = MicroLabelStyle.copy(fontSize = 9.sp, letterSpacing = 0.sp),
                         color = ShiftTextMuted
                     )
