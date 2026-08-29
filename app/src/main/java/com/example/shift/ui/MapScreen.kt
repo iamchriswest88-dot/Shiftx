@@ -615,6 +615,11 @@ fun MapScreen(
                                 settings.javaScriptEnabled = true
                                 settings.allowFileAccess = true
                                 settings.domStorageEnabled = true
+                                // OSM's tile policy asks that an app say who it is;
+                                // a bare WebView identifies as a browser and gets
+                                // treated like a scraper.
+                                settings.userAgentString =
+                                    "${settings.userAgentString} ShiftX/${com.example.shift.BuildConfig.VERSION_NAME} (+https://github.com/iamchriswest88-dot/Shiftx)"
                                 settings.setGeolocationEnabled(true)
                                 webChromeClient = object : WebChromeClient() {
                                     override fun onGeolocationPermissionsShowPrompt(

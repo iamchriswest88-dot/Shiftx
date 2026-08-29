@@ -9,6 +9,8 @@
         body { padding: 0; margin: 0; background: #fff; }
         html, body, #map { height: 100%; width: 100vw; background: #fff; }
         .leaflet-container { background: #fff !important; }
+        /* Only the tiles — the route, markers and frost sit in other panes. */
+        .leaflet-tile-pane { filter: saturate(0.32) brightness(1.07) contrast(0.94); }
         .marker-circle {
             width: 28px;
             height: 28px;
@@ -83,10 +85,20 @@
         <div id="frostTint"></div>
     </div>
     <script>
+        // OpenStreetMap's own tiles: no key, no account, no expiry. CARTO's
+        // light_all basemap this used to draw was put behind an API key, and an
+        // unkeyed request comes back as a tile telling the rider to get one —
+        // the route drew fine over a wall of "API key required".
+        //
+        // OSM ships far more saturated than light_all did, so the tile pane is
+        // desaturated in CSS back to the pale ground this map was drawn for:
+        // the orange route has to stay the loudest thing on screen.
+        var BASEMAP_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
         var map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        L.tileLayer(BASEMAP_URL, {
             maxZoom: 19,
-            attribution: '&copy; OpenStreetMap &copy; CARTO'
+            attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
         var routeLayer = L.layerGroup().addTo(map);
@@ -101,7 +113,7 @@
             inertia: false, keyboard: false, dragging: false, touchZoom: false,
             scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false
         });
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(mirror);
+        L.tileLayer(BASEMAP_URL, { maxZoom: 19 }).addTo(mirror);
         var mirrorRouteLayer = L.layerGroup().addTo(mirror);
         function syncMirror() {
             mirror.setView(map.getCenter(), map.getZoom(), { animate: false });
