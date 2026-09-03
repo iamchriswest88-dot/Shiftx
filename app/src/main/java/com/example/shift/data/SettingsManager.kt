@@ -21,6 +21,7 @@ class SettingsManager(private val context: Context) {
         val ORS_API_KEY = stringPreferencesKey("ors_api_key")
         val FIREBASE_URL = stringPreferencesKey("firebase_url")
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
+        val ANTHROPIC_API_KEY = stringPreferencesKey("anthropic_api_key")
         val AUTO_OPEN_SEGMENT_PAGE = booleanPreferencesKey("auto_open_segment_page")
         val END_RIDE_FANFARE = stringPreferencesKey("end_ride_fanfare")
         val END_RIDE_FANFARE_TS = longPreferencesKey("end_ride_fanfare_ts")
@@ -49,6 +50,11 @@ class SettingsManager(private val context: Context) {
 
     val geminiApiKeyFlow: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[GEMINI_API_KEY]
+    }
+
+    /** Plans strength sessions. Device-only, like the other keys; never synced or compiled in. */
+    val anthropicApiKeyFlow: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[ANTHROPIC_API_KEY]
     }
 
     val autoOpenSegmentPageFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -97,6 +103,12 @@ class SettingsManager(private val context: Context) {
     suspend fun saveGeminiApiKey(apiKey: String) {
         context.dataStore.edit { preferences ->
             preferences[GEMINI_API_KEY] = apiKey
+        }
+    }
+
+    suspend fun saveAnthropicApiKey(apiKey: String) {
+        context.dataStore.edit { preferences ->
+            preferences[ANTHROPIC_API_KEY] = apiKey
         }
     }
 

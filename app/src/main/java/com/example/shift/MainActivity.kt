@@ -74,6 +74,8 @@ import com.example.shift.ui.*
 import com.example.shift.ui.gym.GymViewModel
 import com.example.shift.ui.gym.GymHistoryScreen
 import com.example.shift.ui.gym.GymHistoryViewModel
+import com.example.shift.ui.gym.strength.StrengthRunnerScreen
+import com.example.shift.ui.gym.strength.StrengthScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -112,10 +114,11 @@ class MainActivity : ComponentActivity() {
 
                 val isKaroo = android.os.Build.MANUFACTURER.contains("Hammerhead", ignoreCase = true) || android.os.Build.MODEL.contains("Karoo", ignoreCase = true)
 
-                // Gym and Coach stay parked. The Hub leads on the phone — form first,
-                // then the ride record — but not on the Karoo, where the head unit is
+                // The old circuit Gym and the Coach stay parked; Strength is the
+                // set-by-set runner. The Hub leads on the phone — form first, then
+                // the ride record — but not on the Karoo, where the head unit is
                 // for riding and two tabs are all the screen takes.
-                val tabs = if (isKaroo) listOf("Segments", "Settings") else listOf("Hub", "Activity", "Segments", "Routes", "Settings")
+                val tabs = if (isKaroo) listOf("Segments", "Settings") else listOf("Hub", "Activity", "Segments", "Routes", "Strength", "Settings")
                 val tabIconsSelected = if (isKaroo) listOf(
                     Icons.Default.Map,
                     Icons.Default.Settings
@@ -124,6 +127,7 @@ class MainActivity : ComponentActivity() {
                     Icons.Default.ShowChart,
                     Icons.Default.Map,
                     Icons.Default.Route,
+                    Icons.Default.FitnessCenter,
                     Icons.Default.Settings
                 )
                 val tabIconsUnselected = if (isKaroo) listOf(
@@ -134,6 +138,7 @@ class MainActivity : ComponentActivity() {
                     Icons.Outlined.ShowChart,
                     Icons.Outlined.Map,
                     Icons.Outlined.Route,
+                    Icons.Outlined.FitnessCenter,
                     Icons.Outlined.Settings
                 )
 
@@ -214,7 +219,8 @@ class MainActivity : ComponentActivity() {
                                             }
                                             RouteCreatorScreen(viewModel = routeCreatorViewModel, hazeState = routesHazeState)
                                         }
-                                        4 -> SettingsScreen(viewModel = mainViewModel)
+                                        4 -> StrengthScreen(onOpenRunner = { navController.navigate("strength_runner") })
+                                        5 -> SettingsScreen(viewModel = mainViewModel)
                                     }
                                 }
                             }
@@ -256,6 +262,11 @@ class MainActivity : ComponentActivity() {
                             onRun = { id -> navController.navigate("runner/$id") {
                                 popUpTo("home")
                             } }
+                        )
+                    }
+                    composable("strength_runner") {
+                        StrengthRunnerScreen(
+                            onExit = { navController.popBackStack("home", inclusive = false) }
                         )
                     }
                     composable("runner/{workoutId}") { backStackEntry ->

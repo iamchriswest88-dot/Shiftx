@@ -37,6 +37,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val currentOrsApiKey by viewModel.orsApiKey.collectAsState()
     val currentFirebaseUrl by viewModel.firebaseUrl.collectAsState()
     val currentGeminiApiKey by viewModel.geminiApiKey.collectAsState()
+    val currentAnthropicApiKey by viewModel.anthropicApiKey.collectAsState()
     val autoOpenSegmentPage by viewModel.autoOpenSegmentPage.collectAsState()
     val currentEndRideFanfare by viewModel.endRideFanfare.collectAsState()
 
@@ -46,13 +47,15 @@ fun SettingsScreen(viewModel: MainViewModel) {
     var orsApiKey by remember { mutableStateOf(currentOrsApiKey) }
     var firebaseUrl by remember { mutableStateOf(currentFirebaseUrl) }
     var geminiApiKey by remember { mutableStateOf(currentGeminiApiKey) }
+    var anthropicApiKey by remember { mutableStateOf(currentAnthropicApiKey) }
 
-    LaunchedEffect(currentApiKey, currentAthleteId, currentOrsApiKey, currentFirebaseUrl, currentGeminiApiKey) {
+    LaunchedEffect(currentApiKey, currentAthleteId, currentOrsApiKey, currentFirebaseUrl, currentGeminiApiKey, currentAnthropicApiKey) {
         apiKey = currentApiKey
         athleteId = currentAthleteId
         orsApiKey = currentOrsApiKey
         firebaseUrl = currentFirebaseUrl
         geminiApiKey = currentGeminiApiKey
+        anthropicApiKey = currentAnthropicApiKey
     }
 
     LaunchedEffect(currentEndRideFanfare) {
@@ -329,6 +332,15 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = anthropicApiKey ?: "",
+                onValueChange = { anthropicApiKey = it },
+                label = { Text("Anthropic API Key (strength planner)") },
+                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -336,6 +348,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 onClick = { 
                     viewModel.saveSettings(apiKey ?: "", orsApiKey ?: "", athleteId, firebaseUrl ?: "")
                     viewModel.updateGeminiApiKey(geminiApiKey ?: "")
+                    viewModel.updateAnthropicApiKey(anthropicApiKey ?: "")
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.medium

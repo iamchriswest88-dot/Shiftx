@@ -7,6 +7,11 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.shift.data.dao.*
 import com.example.shift.data.model.*
+import com.example.shift.data.gym.GymDao
+import com.example.shift.data.gym.GymExercise
+import com.example.shift.data.gym.GymSeed
+import com.example.shift.data.gym.GymSession
+import com.example.shift.data.gym.GymSet
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -14,8 +19,11 @@ import kotlinx.coroutines.launch
 import androidx.room.migration.Migration
 
 @Database(
-    entities = [Exercise::class, Workout::class, Step::class, DoneLog::class, ExerciseLog::class],
-    version = 8,
+    entities = [
+        Exercise::class, Workout::class, Step::class, DoneLog::class, ExerciseLog::class,
+        GymSession::class, GymSet::class, GymExercise::class
+    ],
+    version = 9,
     exportSchema = false
 )
 abstract class BranchDatabase : RoomDatabase() {
@@ -25,6 +33,7 @@ abstract class BranchDatabase : RoomDatabase() {
     abstract fun stepDao(): StepDao
     abstract fun doneDao(): DoneDao
     abstract fun exerciseLogDao(): ExerciseLogDao
+    abstract fun gymDao(): GymDao
 
     companion object {
         @Volatile
@@ -79,13 +88,25 @@ abstract class BranchDatabase : RoomDatabase() {
                         db.execSQL("ALTER TABLE done_log ADD COLUMN hrTss INTEGER DEFAULT NULL")
                     }
                 }
+
+                // Strength module: sessions, the sets inside them, and the
+                // exercise library. Column types and constraints must match the
+                // entities exactly or Room refuses to open the database.
+                val MIGRATION_8_9 = object : Migration(8, 9) {
+                    override fun migrate(db: SupportSQLiteDatabase) {
+                        db.execSQL("CREATE TABLE IF NOT EXISTS `gym_session` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `date` TEXT NOT NULL, `started_at_millis` INTEGER NOT NULL, `duration_minutes` INTEGER NOT NULL, `notes` TEXT, `perceived_effort` INTEGER, PRIMARY KEY(`id`))")
+                        db.execSQL("CREATE TABLE IF NOT EXISTS `gym_set` (`id` TEXT NOT NULL, `session_id` TEXT NOT NULL, `exercise_name` TEXT NOT NULL, `weight_kg` REAL, `reps` INTEGER, `target_reps` INTEGER, `hold_seconds` INTEGER, `side` TEXT, `set_index` INTEGER NOT NULL, `completed` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`session_id`) REFERENCES `gym_session`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )")
+                        db.execSQL("CREATE INDEX IF NOT EXISTS `index_gym_set_session_id` ON `gym_set` (`session_id`)")
+                        db.execSQL("CREATE TABLE IF NOT EXISTS `gym_exercise` (`name` TEXT NOT NULL, `movement_pattern` TEXT NOT NULL, `unilateral` INTEGER NOT NULL, `equipment` TEXT NOT NULL, `active` INTEGER NOT NULL, PRIMARY KEY(`name`))")
+                    }
+                }
                 
                 Room.databaseBuilder(
                     context.applicationContext,
                     BranchDatabase::class.java,
                     "branch_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     .addCallback(object : Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {
                             super.onOpen(db)
@@ -93,6 +114,9 @@ abstract class BranchDatabase : RoomDatabase() {
                                 INSTANCE?.exerciseDao()?.upsertAll(
                                     SeedData.GYM_EXERCISES + SeedData.FLOW_EXERCISES
                                 )
+                                // Insert-if-absent, not upsert: an exercise the user
+                                // has switched off must stay off.
+                                INSTANCE?.gymDao()?.insertExercisesIfAbsent(GymSeed.EXERCISES)
                             }
                         }
                     })

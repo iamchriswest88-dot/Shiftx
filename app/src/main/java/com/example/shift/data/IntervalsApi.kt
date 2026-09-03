@@ -104,7 +104,9 @@ data class IntervalsEventRequest(
     val moving_time: Int,
     val icu_training_load: Int,
     val category: String = "WORKOUT",
-    val distance: Double? = null
+    val distance: Double? = null,
+    /** Free text shown on the calendar entry; the strength push puts the set summary here. */
+    val description: String? = null
 )
 
 @Serializable

@@ -49,6 +49,21 @@ git tag v1.9 && git push origin v1.9
 
 `versionName` comes from the tag, `versionCode` from the Actions run number, so it always climbs.
 
+## Strength module
+
+The **Strength** tab runs a set-by-set session with a timer and tells you what to do before you
+start. Plans come from the last six weeks of logged sets: clean sets move the load up one owned
+increment in code, and only the judgement calls (a stall, a heavy cycling week, a two-week gap, a
+session landing on a netball day) go to Claude. Whatever comes back is checked against the
+equipment list and exercise library; anything that fails repeats last session unchanged.
+
+The runner keeps its place on disk on every step, so a refresh, a locked screen or a killed app
+lands back on the same set with the same countdown. Finished sessions are written to the local
+database and, if intervals.icu is configured, pushed there as a WeightTraining entry.
+
+Set the **Anthropic API Key** in Settings to enable the judgement step. Without it the
+deterministic plan is used and the reasons it would have asked are listed on the card.
+
 ## Gemini API key
 
 Set it once in the app's Settings screen. It is deliberately not baked into the APK — this repo is

@@ -90,6 +90,7 @@ class MainViewModel(
     val orsApiKey: StateFlow<String> = settingsManager.orsApiKeyFlow.map { it ?: "" }.stateIn(viewModelScope, SharingStarted.Lazily, "")
     val firebaseUrl: StateFlow<String> = settingsManager.firebaseUrlFlow.map { it ?: "" }.stateIn(viewModelScope, SharingStarted.Lazily, "")
     val geminiApiKey: StateFlow<String> = settingsManager.geminiApiKeyFlow.map { it ?: "" }.stateIn(viewModelScope, SharingStarted.Lazily, "")
+    val anthropicApiKey: StateFlow<String> = settingsManager.anthropicApiKeyFlow.map { it ?: "" }.stateIn(viewModelScope, SharingStarted.Lazily, "")
     val autoOpenSegmentPage: StateFlow<Boolean> = settingsManager.autoOpenSegmentPageFlow.stateIn(viewModelScope, SharingStarted.Lazily, true)
 
     val endRideFanfare: StateFlow<String> = settingsManager.endRideFanfareFlow.stateIn(viewModelScope, SharingStarted.Lazily, "")
@@ -456,6 +457,12 @@ class MainViewModel(
     fun updateGeminiApiKey(key: String) {
         viewModelScope.launch {
             settingsManager.saveGeminiApiKey(key)
+        }
+    }
+
+    fun updateAnthropicApiKey(key: String) {
+        viewModelScope.launch {
+            settingsManager.saveAnthropicApiKey(key.trim())
         }
     }
 
