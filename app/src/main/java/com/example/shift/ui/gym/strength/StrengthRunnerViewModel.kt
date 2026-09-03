@@ -20,6 +20,7 @@ import com.example.shift.data.gym.RunnerSnapshot
 import com.example.shift.data.gym.RunnerStep
 import com.example.shift.data.gym.RunnerStore
 import com.example.shift.data.gym.StepKind
+import com.example.shift.data.gym.equipmentType
 import com.example.shift.data.repository.DoneRepository
 import com.example.shift.ui.runner.AudioCueManager
 import kotlinx.coroutines.flow.MutableStateFlow
