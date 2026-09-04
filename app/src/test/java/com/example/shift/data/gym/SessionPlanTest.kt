@@ -93,6 +93,21 @@ class SessionPlanTest {
     }
 
     @Test
+    fun `stepper snaps to owned loads inside the list and keeps going above it`() {
+        assertEquals(12.0, Gear.steppedLoad(Equipment.KETTLEBELL, 10.0, up = true)!!, 0.0)
+        assertEquals(14.0, Gear.steppedLoad(Equipment.KETTLEBELL, 12.0, up = true)!!, 0.0)
+        assertEquals(16.0, Gear.steppedLoad(Equipment.KETTLEBELL, 14.0, up = true)!!, 0.0)
+        assertEquals(12.0, Gear.steppedLoad(Equipment.KETTLEBELL, 14.0, up = false)!!, 0.0)
+        assertEquals(12.5, Gear.steppedLoad(Equipment.DUMBBELL, 10.0, up = true)!!, 0.0)
+        assertEquals(31.0, Gear.steppedLoad(Equipment.CABLE, 30.0, up = true)!!, 0.0)
+        assertEquals(4.0, Gear.steppedLoad(Equipment.KETTLEBELL, null, up = true)!!, 0.0)
+        assertNull(Gear.steppedLoad(Equipment.KETTLEBELL, 4.0, up = false))
+        assertNull(Gear.steppedLoad(Equipment.KETTLEBELL, null, up = false))
+        assertEquals(1.0, Gear.steppedLoad(Equipment.BODYWEIGHT, null, up = true)!!, 0.0)
+        assertNull(Gear.steppedLoad(Equipment.BODYWEIGHT, 1.0, up = false))
+    }
+
+    @Test
     fun `gear knows its increments`() {
         assertEquals(9.0, Gear.nextLoad(Equipment.CABLE, 8.0)!!, 0.0)
         assertNull(Gear.nextLoad(Equipment.CABLE, 30.0))

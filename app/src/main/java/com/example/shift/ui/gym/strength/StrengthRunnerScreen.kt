@@ -272,19 +272,18 @@ private fun RepStep(state: RunnerUiState, step: RunnerStep, note: String?, vm: S
         onPlus = { vm.setReps(step.exerciseIndex, reps + 1) }
     )
     Spacer(Modifier.height(16.dp))
-    if (bodyweight) {
-        Text("BODYWEIGHT", style = MicroLabelStyle)
-    } else {
-        Stepper(
-            value = weight?.let { Gear.fmt(it) } ?: "–",
-            unit = "kg",
-            onMinus = { vm.setWeight(step.exerciseIndex, vm.steppedWeight(step, weight, up = false)) },
-            onPlus = { vm.setWeight(step.exerciseIndex, vm.steppedWeight(step, weight, up = true)) }
-        )
-        if (weight != null && step.targetWeightKg != null && weight != step.targetWeightKg) {
-            Spacer(Modifier.height(6.dp))
-            Text("plan said ${Gear.fmt(step.targetWeightKg)}kg", style = MicroLabelStyle)
-        }
+    // Load is never capped here: the equipment list bounds what gets
+    // recommended, not what gets logged. Below the lightest load is bodyweight.
+    Stepper(
+        value = weight?.let { Gear.fmt(it) } ?: "BW",
+        unit = if (weight == null) (if (bodyweight) "bodyweight" else "no load") else "kg",
+        onMinus = { vm.setWeightExact(step.exerciseIndex, vm.steppedWeight(step, weight, up = false)) },
+        onPlus = { vm.setWeightExact(step.exerciseIndex, vm.steppedWeight(step, weight, up = true)) }
+    )
+    val planned = step.targetWeightKg
+    if (planned != null && weight != planned) {
+        Spacer(Modifier.height(6.dp))
+        Text("plan said ${Gear.fmt(planned)}kg", style = MicroLabelStyle)
     }
 }
 

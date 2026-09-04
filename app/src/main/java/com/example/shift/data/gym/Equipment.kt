@@ -52,6 +52,35 @@ object Gear {
     /** The heaviest load that exists for [equipment], for clamping. */
     fun maxLoad(equipment: Equipment): Double? = loadsFor(equipment).maxOrNull()
 
+    /** Increment used when stepping past the loads on the list. */
+    fun stepKg(equipment: Equipment): Double = when (equipment) {
+        Equipment.KETTLEBELL -> 2.0
+        Equipment.DUMBBELL -> 2.5
+        Equipment.PLATE -> 10.0
+        Equipment.CABLE -> 1.0
+        Equipment.BODYWEIGHT -> 1.0
+    }
+
+    /**
+     * The next load up or down from [kg] for the runner's stepper. Snaps to
+     * owned loads while inside the list, then keeps going by [stepKg] above it:
+     * the list caps what gets recommended, not what can be logged. Stepping
+     * below the lightest load lands on null, bodyweight.
+     */
+    fun steppedLoad(equipment: Equipment, kg: Double?, up: Boolean): Double? {
+        val loads = loadsFor(equipment)
+        val step = stepKg(equipment)
+        if (kg == null) return if (up) (loads.firstOrNull() ?: step) else null
+        return if (up) {
+            loads.firstOrNull { it > kg + 0.01 } ?: (kg + step)
+        } else {
+            loads.lastOrNull { it < kg - 0.01 }?.let { return it }
+            // Above the list, keep stepping down; at or below its lightest load, bodyweight.
+            val lightest = loads.firstOrNull()
+            if (lightest == null || kg > lightest + 0.01) (kg - step).takeIf { it > 0.01 } else null
+        }
+    }
+
     /** One-line inventory for the planner prompt. */
     fun describe(): String = buildString {
         appendLine("- Kettlebells: ${KETTLEBELLS_KG.joinToString(", ") { fmt(it) }} kg (heaviest 12kg)")

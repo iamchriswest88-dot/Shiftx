@@ -118,13 +118,13 @@ class StrengthRunnerViewModel(
     fun setWeight(exerciseIndex: Int, kg: Double?) = transition { s, _ -> RunnerEngine.setOverride(s, exerciseIndex, kg, null) }
     fun setReps(exerciseIndex: Int, reps: Int) = transition { s, _ -> RunnerEngine.setOverride(s, exerciseIndex, null, reps.coerceIn(1, 50)) }
 
-    /** The owned load one step up or down from [kg] for this exercise's equipment. */
-    fun steppedWeight(step: RunnerStep, kg: Double?, up: Boolean): Double? {
-        val equipment = equipmentFor(step.exerciseName)
-        if (equipment == Equipment.BODYWEIGHT) return null
-        val loads = Gear.loadsFor(equipment)
-        if (kg == null) return if (up) loads.firstOrNull() else null
-        return if (up) loads.firstOrNull { it > kg + 0.01 } ?: kg else loads.lastOrNull { it < kg - 0.01 } ?: kg
+    /** The load one step up or down from [kg] for this exercise's equipment. Never capped. */
+    fun steppedWeight(step: RunnerStep, kg: Double?, up: Boolean): Double? =
+        Gear.steppedLoad(equipmentFor(step.exerciseName), kg, up)
+
+    /** Explicit load, typed rather than stepped. Null means bodyweight. */
+    fun setWeightExact(exerciseIndex: Int, kg: Double?) = transition { s, _ ->
+        s.copy(overrides = s.overrides + (exerciseIndex.toString() to (s.overrides[exerciseIndex.toString()] ?: com.example.shift.data.gym.ExerciseOverride()).copy(weightKg = kg?.takeIf { it > 0.0 })))
     }
 
     fun equipmentFor(exerciseName: String): Equipment =
