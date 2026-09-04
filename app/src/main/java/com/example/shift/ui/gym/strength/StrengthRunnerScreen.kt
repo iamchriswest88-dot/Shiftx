@@ -1,6 +1,7 @@
 package com.example.shift.ui.gym.strength
 
 import android.view.WindowManager
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -81,6 +82,7 @@ import com.example.shift.theme.ShiftTextOnDark
 import com.example.shift.theme.ShiftTextPrimary
 import com.example.shift.theme.ShiftTextSecondary
 import com.example.shift.theme.StatNumeralHero
+import com.example.shift.theme.ndotFamily
 import kotlinx.coroutines.delay
 
 /**
@@ -135,6 +137,25 @@ fun StrengthRunnerScreen(
     }
 }
 
+/**
+ * Two looks for the runner. Work steps sit on the app's light ground; the
+ * countdowns (rest, swap, hold) go black with the dot face, so a glance
+ * across the room tells work from waiting.
+ */
+private data class RunnerPalette(
+    val bg: Color,
+    val text: Color,
+    val muted: Color,
+    val card: Color,
+    val border: Color,
+    val track: Color
+) {
+    companion object {
+        val light = RunnerPalette(ShiftBg, ShiftTextPrimary, ShiftTextSecondary, ShiftCard, ShiftDotBorder, ShiftCardInset)
+        val dark = RunnerPalette(Color.Black, ShiftTextOnDark, Color(0xFF8A8A84), Color(0xFF1B1B19), Color(0xFF3A3A36), Color(0xFF262624))
+    }
+}
+
 @Composable
 private fun ActiveStepScreen(state: RunnerUiState, vm: StrengthRunnerViewModel, onExit: () -> Unit) {
     val snapshot = state.snapshot ?: return
@@ -147,6 +168,8 @@ private fun ActiveStepScreen(state: RunnerUiState, vm: StrengthRunnerViewModel, 
     val planExercise = snapshot.plan.exercises.getOrNull(step.exerciseIndex)
     val remainingMs = state.remainingMs
     val remainingSec = remainingMs?.let { ((it + 999) / 1000).toInt() }
+    val dark = step.isTimed
+    val p = if (dark) RunnerPalette.dark else RunnerPalette.light
 
     if (showDiscard) {
         AlertDialog(
@@ -160,20 +183,20 @@ private fun ActiveStepScreen(state: RunnerUiState, vm: StrengthRunnerViewModel, 
         )
     }
 
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
+    Column(Modifier.fillMaxSize().background(p.bg).systemBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
         // Top bar: step back, session clock, mute, discard.
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = vm::back, enabled = snapshot.stepIndex > 0) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Previous step", tint = if (snapshot.stepIndex > 0) ShiftTextPrimary else ShiftTextMuted)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Previous step", tint = if (snapshot.stepIndex > 0) p.text else p.muted)
             }
             Spacer(Modifier.weight(1f))
-            Text(formatClock(elapsedSec), style = MicroLabelStyle.copy(fontSize = 13.sp, color = ShiftTextSecondary))
+            Text(formatClock(elapsedSec), style = MicroLabelStyle.copy(fontSize = 13.sp, color = p.muted, fontFamily = if (dark) ndotFamily else MicroLabelStyle.fontFamily))
             Spacer(Modifier.weight(1f))
             IconButton(onClick = { muted = !muted; vm.muted = muted }) {
-                Icon(if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, "Mute", tint = ShiftTextSecondary)
+                Icon(if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, "Mute", tint = p.muted)
             }
             IconButton(onClick = { showDiscard = true }) {
-                Icon(Icons.Default.Close, "Discard", tint = ShiftTextSecondary)
+                Icon(Icons.Default.Close, "Discard", tint = p.muted)
             }
         }
 
@@ -183,10 +206,10 @@ private fun ActiveStepScreen(state: RunnerUiState, vm: StrengthRunnerViewModel, 
             progress = { if (total == 0) 0f else done.toFloat() / total },
             modifier = Modifier.fillMaxWidth().height(4.dp),
             color = ShiftAccent,
-            trackColor = ShiftCardInset
+            trackColor = p.track
         )
         Spacer(Modifier.height(6.dp))
-        Text("$done / $total sets", style = MicroLabelStyle, modifier = Modifier.align(Alignment.End))
+        Text("$done / $total sets", style = MicroLabelStyle.copy(color = p.muted), modifier = Modifier.align(Alignment.End))
 
         // Centre: what to do now.
         Column(
@@ -200,7 +223,7 @@ private fun ActiveStepScreen(state: RunnerUiState, vm: StrengthRunnerViewModel, 
                     label = "HOLD", title = step.exerciseName, side = step.side,
                     setLine = "SET ${step.setNumber} OF ${step.totalSets}",
                     remainingSec = remainingSec ?: 0, totalSec = step.targetHoldSeconds ?: 0,
-                    paused = snapshot.isPaused, note = planExercise?.note, upNext = null, vm = vm, showRestAdjust = false, restSeconds = 0
+                    paused = snapshot.isPaused, note = planExercise?.note, upNext = null, vm = vm, showRestAdjust = false, restSeconds = 0, p = p
                 )
                 StepKind.SWAP, StepKind.REST -> {
                     val next = step.nextWorkIndex?.let { steps.getOrNull(it) }
@@ -216,7 +239,8 @@ private fun ActiveStepScreen(state: RunnerUiState, vm: StrengthRunnerViewModel, 
                         upNext = next?.let { upNextLine(snapshot, it) },
                         vm = vm,
                         showRestAdjust = step.kind == StepKind.REST,
-                        restSeconds = RunnerEngine.restSecondsFor(snapshot, step)
+                        restSeconds = RunnerEngine.restSecondsFor(snapshot, step),
+                        p = p
                     )
                 }
             }
@@ -234,9 +258,14 @@ private fun ActiveStepScreen(state: RunnerUiState, vm: StrengthRunnerViewModel, 
             onClick = vm::done,
             modifier = Modifier.fillMaxWidth().height(64.dp),
             shape = RoundedCornerShape(20.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = if (step.isWork) ShiftAccent else ShiftDarkSurface, contentColor = Color.White)
+            colors = if (step.isWork) ButtonDefaults.buttonColors(containerColor = ShiftAccent, contentColor = Color.White)
+                     else ButtonDefaults.buttonColors(containerColor = ShiftTextOnDark, contentColor = Color.Black)
         ) {
-            Text(primaryLabel, style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 1.5.sp))
+            Text(
+                primaryLabel,
+                style = if (dark) MaterialTheme.typography.titleMedium.copy(fontFamily = ndotFamily, fontSize = 18.sp, letterSpacing = 2.sp)
+                        else MaterialTheme.typography.titleMedium.copy(letterSpacing = 1.5.sp)
+            )
         }
         if (step.isWork) {
             TextButton(onClick = vm::skip, modifier = Modifier.align(Alignment.CenterHorizontally)) {
@@ -291,14 +320,14 @@ private fun RepStep(state: RunnerUiState, step: RunnerStep, note: String?, vm: S
 private fun TimedStep(
     label: String, title: String, side: String?, setLine: String,
     remainingSec: Int, totalSec: Int, paused: Boolean, note: String?, upNext: String?,
-    vm: StrengthRunnerViewModel, showRestAdjust: Boolean, restSeconds: Int
+    vm: StrengthRunnerViewModel, showRestAdjust: Boolean, restSeconds: Int, p: RunnerPalette
 ) {
-    SetHeader(setLine = setLine, side = side, label = label)
+    SetHeader(setLine = setLine, side = side, label = label, p = p)
     Spacer(Modifier.height(12.dp))
-    Text(title, style = MaterialTheme.typography.headlineLarge, color = ShiftTextPrimary, textAlign = TextAlign.Center)
+    Text(title, style = MaterialTheme.typography.displaySmall, color = p.text, textAlign = TextAlign.Center)
     if (!note.isNullOrBlank()) {
         Spacer(Modifier.height(8.dp))
-        Text(note, style = MaterialTheme.typography.bodySmall, color = ShiftTextSecondary, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 12.dp))
+        Text(note, style = MaterialTheme.typography.bodySmall.copy(fontFamily = ndotFamily, fontSize = 14.sp), color = p.muted, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 12.dp))
     }
     Spacer(Modifier.height(20.dp))
     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(220.dp)) {
@@ -306,53 +335,61 @@ private fun TimedStep(
             progress = { if (totalSec <= 0) 0f else 1f - remainingSec.toFloat() / totalSec },
             modifier = Modifier.fillMaxSize(),
             color = ShiftAccent,
-            trackColor = ShiftCardInset,
+            trackColor = p.track,
             strokeWidth = 8.dp
         )
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(formatClock(remainingSec.toLong()), style = StatNumeralHero.copy(fontSize = 56.sp, lineHeight = 60.sp), color = ShiftTextPrimary)
-            if (paused) Text("PAUSED", style = MicroLabelStyle.copy(color = ShiftAccent))
+            Text(formatClock(remainingSec.toLong()), style = StatNumeralHero.copy(fontSize = 56.sp, lineHeight = 60.sp), color = p.text)
+            if (paused) Text("PAUSED", style = MicroLabelStyle.copy(color = ShiftAccent, fontFamily = ndotFamily))
         }
     }
     Spacer(Modifier.height(16.dp))
     if (upNext != null) {
-        Text("UP NEXT", style = MicroLabelStyle.copy(color = ShiftAccent, letterSpacing = 2.sp))
+        Text("UP NEXT", style = MicroLabelStyle.copy(color = ShiftAccent, letterSpacing = 2.sp, fontFamily = ndotFamily))
         Spacer(Modifier.height(4.dp))
-        Text(upNext, style = MaterialTheme.typography.titleMedium, color = ShiftTextPrimary, textAlign = TextAlign.Center)
+        Text(upNext, style = MaterialTheme.typography.displaySmall.copy(fontSize = 22.sp, lineHeight = 28.sp), color = p.text, textAlign = TextAlign.Center)
         Spacer(Modifier.height(12.dp))
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         if (showRestAdjust) {
-            OutlinedButton(onClick = { vm.adjustRest(-15) }, shape = RoundedCornerShape(999.dp)) { Text("−15s") }
-            Text("rest ${restSeconds}s", style = MicroLabelStyle.copy(fontSize = 11.sp))
-            OutlinedButton(onClick = { vm.adjustRest(+15) }, shape = RoundedCornerShape(999.dp)) { Text("+15s") }
+            val adjustColors = ButtonDefaults.outlinedButtonColors(contentColor = p.text)
+            val adjustBorder = BorderStroke(1.dp, p.border)
+            OutlinedButton(onClick = { vm.adjustRest(-15) }, shape = RoundedCornerShape(999.dp), colors = adjustColors, border = adjustBorder) {
+                Text("−15s", fontFamily = ndotFamily)
+            }
+            Text("rest ${restSeconds}s", style = MicroLabelStyle.copy(fontSize = 11.sp, color = p.muted, fontFamily = ndotFamily))
+            OutlinedButton(onClick = { vm.adjustRest(+15) }, shape = RoundedCornerShape(999.dp), colors = adjustColors, border = adjustBorder) {
+                Text("+15s", fontFamily = ndotFamily)
+            }
         }
         IconButton(
             onClick = vm::pauseResume,
-            modifier = Modifier.size(48.dp).background(ShiftCard, CircleShape).border(1.dp, ShiftDotBorder, CircleShape)
+            modifier = Modifier.size(48.dp).background(p.card, CircleShape).border(1.dp, p.border, CircleShape)
         ) {
-            Icon(if (paused) Icons.Default.PlayArrow else Icons.Default.Pause, if (paused) "Resume" else "Pause", tint = ShiftTextPrimary)
+            Icon(if (paused) Icons.Default.PlayArrow else Icons.Default.Pause, if (paused) "Resume" else "Pause", tint = p.text)
         }
     }
 }
 
 @Composable
-private fun SetHeader(setLine: String, side: String?, label: String? = null) {
+private fun SetHeader(setLine: String, side: String?, label: String? = null, p: RunnerPalette = RunnerPalette.light) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (label != null) Pill(label, dark = true)
-        if (setLine.isNotBlank()) Pill(setLine, dark = false)
-        if (side != null) Pill(side.uppercase(), dark = false, accent = true)
+        if (label != null) Pill(label, p = p, filled = true)
+        if (setLine.isNotBlank()) Pill(setLine, p = p)
+        if (side != null) Pill(side.uppercase(), p = p, accent = true)
     }
 }
 
+/** [filled] inverts the pill against its ground; [accent] paints it purple. */
 @Composable
-private fun Pill(text: String, dark: Boolean, accent: Boolean = false) {
-    val bg = when { accent -> ShiftAccent; dark -> ShiftDarkSurface; else -> ShiftCard }
-    val fg = when { accent || dark -> ShiftTextOnDark; else -> ShiftTextSecondary }
+private fun Pill(text: String, p: RunnerPalette, filled: Boolean = false, accent: Boolean = false) {
+    val bg = when { accent -> ShiftAccent; filled -> p.text; else -> p.card }
+    val fg = when { accent -> ShiftTextOnDark; filled -> p.bg; else -> p.muted }
+    val dotted = p === RunnerPalette.dark
     Surface(shape = RoundedCornerShape(999.dp), color = bg, contentColor = fg) {
         Text(
             text,
-            style = MicroLabelStyle.copy(color = fg, fontWeight = FontWeight.Bold, fontSize = 10.sp),
+            style = MicroLabelStyle.copy(color = fg, fontWeight = FontWeight.Bold, fontSize = 10.sp, fontFamily = if (dotted) ndotFamily else MicroLabelStyle.fontFamily),
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
         )
     }
